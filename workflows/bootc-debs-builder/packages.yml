@@ -143,18 +143,18 @@ packages:
         when: {arch: amd64}
         deb-glob: "linux-image-common-ia-x64v1_* linux-headers-ia-*"
         env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v1, KERNEL_SUFFIX: "-ia-x64v1"}
-      "ia-x64v2":
-        when: {arch: amd64}
-        deb-glob: "linux-image-common-ia-x64v2_* linux-headers-ia-*"
-        env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v2, KERNEL_SUFFIX: "-ia-x64v2"}
+#       "ia-x64v2":
+#         when: {arch: amd64}
+#         deb-glob: "linux-image-common-ia-x64v2_* linux-headers-ia-*"
+#         env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v2, KERNEL_SUFFIX: "-ia-x64v2"}
       "ia-x64v3":
         when: {arch: amd64}
         deb-glob: "linux-image-common-ia-x64v3_* linux-headers-ia-*"
         env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v3, KERNEL_SUFFIX: "-ia-x64v3"}
-      "ia-x64v4":
-        when: {arch: amd64}
-        deb-glob: "linux-image-common-ia-x64v4_* linux-headers-ia-*"
-        env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v4, KERNEL_SUFFIX: "-ia-x64v4"}
+#       "ia-x64v4":
+#         when: {arch: amd64}
+#         deb-glob: "linux-image-common-ia-x64v4_* linux-headers-ia-*"
+#         env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v4, KERNEL_SUFFIX: "-ia-x64v4"}
       "ia-armv8.0":
         when: {arch: arm64}
         deb-glob: "linux-image-common-ia-armv8.0_* linux-headers-ia-*"
@@ -174,18 +174,18 @@ packages:
         when: {arch: amd64}
         deb-glob: "linux-image-common-vm-x64v1_* linux-headers-vm-*"
         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v1, KERNEL_SUFFIX: "-vm-x64v1"}
-      "vm-x64v2":
-        when: {arch: amd64}
-        deb-glob: "linux-image-common-vm-x64v2_* linux-headers-vm-*"
-        env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v2, KERNEL_SUFFIX: "-vm-x64v2"}
+#       "vm-x64v2":
+#         when: {arch: amd64}
+#         deb-glob: "linux-image-common-vm-x64v2_* linux-headers-vm-*"
+#         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v2, KERNEL_SUFFIX: "-vm-x64v2"}
       "vm-x64v3":
         when: {arch: amd64}
         deb-glob: "linux-image-common-vm-x64v3_* linux-headers-vm-*"
         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v3, KERNEL_SUFFIX: "-vm-x64v3"}
-      "vm-x64v4":
-        when: {arch: amd64}
-        deb-glob: "linux-image-common-vm-x64v4_* linux-headers-vm-*"
-        env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v4, KERNEL_SUFFIX: "-vm-x64v4"}
+#       "vm-x64v4":
+#         when: {arch: amd64}
+#         deb-glob: "linux-image-common-vm-x64v4_* linux-headers-vm-*"
+#         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v4, KERNEL_SUFFIX: "-vm-x64v4"}
       "vm-armv8.0":
         when: {arch: arm64}
         deb-glob: "linux-image-common-vm-armv8.0_* linux-headers-vm-*"
@@ -762,25 +762,25 @@ packages:
         deps:
           - linux-image-ia-x64v1
         env: {GPU_SET: ia, GPU_FLAV: x64v1, SEED_SUFFIX: "-ia-x64v1"}
-      ia-x64v2:
-        when: {arch: amd64}
-        deps:
-          - linux-image-ia-x64v2
-        env: {GPU_SET: ia, GPU_FLAV: x64v2, SEED_SUFFIX: "-ia-x64v2"}
+#       ia-x64v2:
+#         when: {arch: amd64}
+#         deps:
+#           - linux-image-ia-x64v2
+#         env: {GPU_SET: ia, GPU_FLAV: x64v2, SEED_SUFFIX: "-ia-x64v2"}
       ia-x64v3:
         when: {arch: amd64}
         deps:
           - linux-image-ia-x64v3
         env: {GPU_SET: ia, GPU_FLAV: x64v3, SEED_SUFFIX: "-ia-x64v3"}
-      ia-x64v4:
-        when: {arch: amd64}
-        deps:
-          - linux-image-ia-x64v4
-        env: {GPU_SET: ia, GPU_FLAV: x64v4, SEED_SUFFIX: "-ia-x64v4"}
-      # NVIDIA variants: the loader policy only, AMD64 ONLY (owner 19:3x(b) +
-      # 09/11: the ARM64 GPU SETS ARE GONE — no dGPU exists on ARM, the
-      # arm64 lane builds NO gpu deb at all (the rpi/rk/mt8183 device
-      # modules stay); the loader variants amd64 only — no ARM NVIDIA).
+#       ia-x64v4:
+#         when: {arch: amd64}
+#         deps:
+#           - linux-image-ia-x64v4
+#         env: {GPU_SET: ia, GPU_FLAV: x64v4, SEED_SUFFIX: "-ia-x64v4"}
+#       # NVIDIA variants: the loader policy only, AMD64 ONLY (owner 19:3x(b) +
+#       # 09/11: the ARM64 GPU SETS ARE GONE — no dGPU exists on ARM, the
+#       # arm64 lane builds NO gpu deb at all (the rpi/rk/mt8183 device
+#       # modules stay); the loader variants amd64 only — no ARM NVIDIA).
       gaming-x64v1:
         when: {arch: amd64}
         deps:
@@ -1260,15 +1260,15 @@ packages:
       ia-x64v1:
         when: {arch: amd64}
         env: {GPU_PROFILE: ia, GPU_LEVEL: x64v1}
-      ia-x64v2:
-        when: {arch: amd64}
-        env: {GPU_PROFILE: ia, GPU_LEVEL: x64v2}
+#       ia-x64v2:
+#         when: {arch: amd64}
+#         env: {GPU_PROFILE: ia, GPU_LEVEL: x64v2}
       ia-x64v3:
         when: {arch: amd64}
         env: {GPU_PROFILE: ia, GPU_LEVEL: x64v3}
-      ia-x64v4:
-        when: {arch: amd64}
-        env: {GPU_PROFILE: ia, GPU_LEVEL: x64v4}
+#       ia-x64v4:
+#         when: {arch: amd64}
+#         env: {GPU_PROFILE: ia, GPU_LEVEL: x64v4}
     variant-name-prefix: "gpu-userspace-"
     variant-env: GPU_VARIANT
     sources:
