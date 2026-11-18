@@ -42,6 +42,10 @@ on:
         required: false
       SB_SIGNING_CERT:
         required: false
+      MODULE_SIGNING_KEY:
+        required: false
+      MODULE_SIGNING_CERT:
+        required: false
     outputs:
       any_rebuilt:
         description: 'true if at least one package was rebuilt (not cache-reused).'

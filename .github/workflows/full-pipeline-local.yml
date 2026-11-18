@@ -517,11 +517,7 @@ jobs:
       pages: write
       id-token: write
       issues: write
-    if: |
-      !cancelled() &&
-      needs.prepare.outputs.debs == 'true' &&
-      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
-      (needs.build_env.result == 'success' || needs.build_env.result == 'skipped')
+    if: false
     uses: ./.github/workflows/bootc-debs-builder-local.yml
     with:
       arch: arm64
