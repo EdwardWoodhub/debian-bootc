@@ -75,7 +75,7 @@ patches:
       - name: 0006-net-core-downgrade-unregister_netdevice-refcount-lea.patch
         url: https://raw.githubusercontent.com/proxmox/pve-kernel/master/patches/kernel/0006-net-core-downgrade-unregister_netdevice-refcount-lea.patch
         stage: common
-        sha256: dad93c41c85e2f69cecd4ddbf7340579fcb37f9e0bb987a9af3875a6e47821b4
+        sha256: 06489a79e2d8bb370ae98fdd99ee64428dafcb131ba13a453c816b1265e26825
         license: GPL-2.0-only
       - name: 0007-Revert-fortify-Do-not-cast-to-unsigned-char.patch
         url: https://raw.githubusercontent.com/proxmox/pve-kernel/master/patches/kernel/0007-Revert-fortify-Do-not-cast-to-unsigned-char.patch
