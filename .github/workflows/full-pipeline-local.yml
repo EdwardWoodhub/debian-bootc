@@ -1,0 +1,687 @@
+name: Full Pipeline (reusable)
+
+# Single source of truth for the debian-bootc / DaemonCores-VE build pipeline.
+# Both products call this via `uses:` from a thin caller workflow that only
+# declares its triggers + concurrency. All orchestration lives here: the change
+# plan (auto-skip untouched stages), the optional base rebuild, and the
+# env/debs/image/iso graph.
+#
+# Because this is a reusable workflow, the `github` context (repository, sha,
+# ref, event_name, event.before) refers to the CALLER's triggering event, so the
+# `changes` job checks out the caller repo and diffs the caller's push.
+
+on:
+  workflow_call:
+    inputs:
+      enable_base:
+        description: 'Product builds on the base_repo upstream and may rebuild it (proxmox-ve-bootc: DaemonCores/debian-bootc; DaemonCores-VE: DaemonCores/proxmox-ve-bootc).'
+        type: boolean
+        default: false
+      # The upstream repository the product derives FROM (the base rebuild
+      # trigger targets it). Default: the debian-bootc base (debian-bootc and
+      # proxmox-ve-bootc sit on it). The DaemonCores-VE fork sits on the
+      # PUBLISHED proxmox-ve-bootc image and passes that repository here, so
+      # the chain runs debian-bootc -> proxmox-ve-bootc -> DaemonCores-VE.
+      base_repo:
+        description: 'Upstream repository to rebuild when update_base is asked.'
+        type: string
+        default: 'DaemonCores/debian-bootc'
+      # Dispatch checkboxes, forwarded from the caller. Passed as strings so an
+      # empty value on push/schedule (no inputs) is tolerated; the `changes` job
+      # only reads them on workflow_dispatch.
+      update_base:
+        type: string
+        default: 'false'
+      rebuild_env:
+        type: string
+        default: 'false'
+      run_debs:
+        type: string
+        default: 'true'
+      run_image:
+        type: string
+        default: 'true'
+      run_iso:
+        type: string
+        default: 'true'
+      # Opt-in GPU entries (when.gpu-driver, e.g. the proprietary NVIDIA libs,
+      # EULA-restricted): forwarded verbatim to the deb builder; 'true' on a
+      # dispatch build includes them, a push never does.
+      gpu_driver:
+        type: string
+        default: 'false'
+      # Single-entry dispatch filter (owner 05/11 08:57: build ONE module
+      # without moving the rest of the lane): forwarded to the deb builder's
+      # `only` input — the expanded manifest is filtered to the packages
+      # whose name is <only_deb> or starts with <only_deb>- BEFORE the wave
+      # plan. An image/iso run on a filtered debs stage keeps the published
+      # deb for every other package (the APT repo carries them). Empty on a
+      # push/schedule = unfiltered.
+      only_deb:
+        type: string
+        default: ''
+      # Opt-in disk-image (.img) build, split per format. NEVER activated by
+      # default — only via the workflow_dispatch checkboxes. The img job runs
+      # after the container image build and produces flashable .img files.
+      # See img-builder.yml.
+      #
+      # Format availability (authoritative — matches the img job matrix):
+      #   rpi     — arm64 only (Pi 3/4/5 are aarch64)
+      #   gallium — arm64 only (Linux Gallium raw image)
+      # The `changes` job computes which formats actually run based on these
+      # inputs AND the arch availability above (a format requested for an arch
+      # it does not support is dropped).
+      run_img_rpi:
+        description: 'Build Raspberry Pi .img (arm64 only)'
+        type: string
+        default: 'false'
+      run_img_gallium:
+        description: 'Build Linux Gallium .img (arm64 only)'
+        type: string
+        default: 'false'
+      sign_modules:
+        description: 'Override signing mode: nosign | sign | both | "" (use config.yml default).'
+        type: string
+        default: ''
+      pipeline_workflow:
+        description: >-
+          Caller workflow file to start again once the signing secrets were
+          generated. Empty: the calling workflow itself.
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  packages: write
+  pages: write
+  id-token: write
+  issues: write
+
+jobs:
+  meta:
+    name: Compute product name
+    runs-on: ubuntu-latest
+    outputs:
+      product_name: ${{ steps.name.outputs.product_name }}
+    steps:
+      - id: name
+        run: |
+          set -euo pipefail
+          name="${GITHUB_REPOSITORY##*/}"   # cut at the slash -> repo name
+          name="${name//-/ }"               # replace dashes with spaces
+          echo "product_name=$name" >> "$GITHUB_OUTPUT"
+
+  changes:
+    name: Compute pipeline plan
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.plan.outputs.env }}
+      debs: ${{ steps.plan.outputs.debs }}
+      image: ${{ steps.plan.outputs.image }}
+      iso: ${{ steps.plan.outputs.iso }}
+      img_rpi: ${{ steps.plan.outputs.img_rpi }}
+      img_gallium: ${{ steps.plan.outputs.img_gallium }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Need the pre-push commit present locally to diff the pushed range.
+          fetch-depth: 0
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          IN_ENV: ${{ inputs.rebuild_env }}
+          IN_DEBS: ${{ inputs.run_debs }}
+          IN_IMAGE: ${{ inputs.run_image }}
+          IN_ISO: ${{ inputs.run_iso }}
+          IN_IMG_RPI: ${{ inputs.run_img_rpi }}
+          IN_IMG_GALLIUM: ${{ inputs.run_img_gallium }}
+        run: |
+          set -euo pipefail
+          env=false; debs=false; image=false; iso=false
+          # Per-format img flags. Each is gated by arch availability:
+          #   rpi     -> arm64 only
+          #   gallium -> arm64 only
+          # (iso is amd64+arm64, but the iso job itself stays amd64-only for
+          # now — see the iso job comment. The arch availability here only
+          # governs the img formats.)
+          img_rpi=false; img_gallium=false
+          case "$EVENT" in
+            schedule)
+              # Monthly full rebuild. img stays opt-in: schedule does NOT build
+              # disk images (the .img is a flash target, not a CI artifact that
+              # needs monthly refresh).
+              env=true; debs=true; image=true; iso=true ;;
+            workflow_dispatch)
+              # Manual override: the checkboxes decide, verbatim. img formats
+              # are opt-in (default false) — only built when the operator ticks
+              # the box. A format requested for an unsupported arch is dropped
+              # (rpi and gallium are arm64-only).
+              env="$IN_ENV"; debs="$IN_DEBS"; image="$IN_IMAGE"; iso="$IN_ISO"
+              img_rpi="$IN_IMG_RPI"
+              img_gallium="$IN_IMG_GALLIUM" ;;
+            push)
+              # New branch or unknown/zero base -> can't diff, rebuild all.
+              # img auto-rebuild: a push to a format's dependencies rebuilds
+              # that format (Containerfile, kernel configs, packages.yml).
+              # img is NOT rebuilt on a bare pipeline.yml push (the all-rebuild
+              # fallback below covers env/debs/image/iso only).
+              if [ -z "$BEFORE" ] \
+                 || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+                 || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+                env=true; debs=true; image=true; iso=true
+              else
+                changed=$(git diff --name-only "$BEFORE" "$SHA")
+                echo "Changed files in push:"; echo "$changed"
+                match() { printf '%s\n' "$changed" | grep -qE "$1"; }
+                match '^workflows/build-env/'                            && env=true   || true
+                match '^workflows/bootc-debs-builder/'                   && debs=true  || true
+                match '^(Containerfile|src/|assets/|workflows/image-tests/|workflows/tests\.yml)' && image=true || true
+                match '^(Containerfile\.iso|workflows/build-iso/)'       && { image=true; iso=true; } || true
+                # Any change to the caller pipeline itself -> full rebuild (safe).
+                # img formats are NOT cascaded by a pipeline.yml push (opt-in
+                # only); their own dependency matches below handle auto-rebuild.
+                match '^\.github/workflows/pipeline\.yml$' && { env=true; debs=true; image=true; iso=true; } || true
+                # Cascade: rebuilt debs feed the image and the ISO; a rebuilt
+                # image feeds the ISO. img formats are NOT cascaded by the
+                # image/debs cascade alone (they have their own dep matches).
+                [ "$debs" = "true" ]  && { image=true; iso=true; } || true
+                [ "$image" = "true" ] && iso=true || true
+                # ── img auto-rebuild on dependency change ──────────────────
+                # A format is auto-rebuilt when its dependencies change.
+                #   Containerfile  -> base of every img format (both rebuilt)
+                #   packages.yml   -> debs feed every img format (both rebuilt)
+                #   kernel-src/modules/embeded/rpi*   -> rpi boot layout (rpi only)
+                #   kernel-src/modules/embeded/rk3588 -> rpi-adjacent SBC (rpi only)
+                #   kernel-src/kconfig/{cpus,pages}   -> flavour fragments (both rebuilt)
+                # Only trigger a format whose deps actually changed; never
+                # cascade between img formats.
+                match '^Containerfile$' && { img_rpi=true; img_gallium=true; } || true
+                match '^workflows/bootc-debs-builder/packages\.yml$' && { img_rpi=true; img_gallium=true; } || true
+                match '^workflows/bootc-debs-builder/kernel-src/modules/embeded/(rpi|rk3588)' && img_rpi=true || true
+              fi ;;
+          esac
+          # img cascade (manual dispatch + push): when a format was opted in OR
+          # auto-triggered AND the image stage ran, keep the flag; if the image
+          # stage was skipped, there is nothing to flash, so drop the flag.
+          # This is per-format now (each format independently gated on image).
+          if [ "$img_rpi" = "true" ] && [ "$image" != "true" ]; then
+            img_rpi=false
+          fi
+          if [ "$img_gallium" = "true" ] && [ "$image" != "true" ]; then
+            img_gallium=false
+          fi
+          # The ISO stage pulls the prebuilt iso_<arch> image, which only a
+          # Containerfile.iso produces. A repo that does not ship one can never
+          # get a green ISO job (manifest unknown), so drop the flag for it.
+          if [ "$iso" = "true" ] && ! git cat-file -e "$SHA:Containerfile.iso" 2>/dev/null; then
+            iso=false
+          fi
+          printf 'env=%s\ndebs=%s\nimage=%s\niso=%s\nimg_rpi=%s\nimg_gallium=%s\n' \
+            "$env" "$debs" "$image" "$iso" "$img_rpi" "$img_gallium" | tee -a "$GITHUB_OUTPUT"
+
+  base:
+    name: Rebuild the upstream base first
+    # Manual-dispatch only, and only for products that sit on an upstream
+    # (enable_base). A push/schedule never rebuilds the base (nothing in the
+    # product repo changes it). If it fails, the downstream jobs gate on base
+    # success/skipped, so the run goes red instead of shipping on a stale base.
+    needs: [prepare]
+    if: ${{ !cancelled() && needs.prepare.outputs.restart != 'yes' && inputs.enable_base && inputs.update_base == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the upstream base pipeline and wait
+        uses: DaemonCores/DaemonCores-CI/trigger-pipeline@main
+        with:
+          repo: ${{ inputs.base_repo }}
+          workflow: pipeline.yml
+          ref: main
+          # PAT with Actions read+write on debian-bootc (GITHUB_TOKEN cannot
+          # dispatch cross-repo). Provided by the caller via `secrets: inherit`.
+          token: ${{ secrets.PIPELINE_PAT }}
+
+  # Prepare the signing secrets. A fork must run the pipeline without hunting
+  # for keys: every secret that can be generated is generated here, once
+  # (scripts/ensure-secrets.sh). Secrets present at the start of the run skip
+  # all of this. A secret created during a run is only visible to the NEXT run,
+  # so when something was created this run stops and starts a fresh one with the
+  # same plan: the build then runs with the keys in place.
+  # Needs PIPELINE_PAT (GITHUB_TOKEN cannot write secrets); without it nothing is
+  # generated and the pipeline degrades (keyless images, unsigned modules).
+  # The caller must grant `actions: write` so this job can start the new run.
+  prepare:
+    name: Prepare signing secrets
+    needs: [changes]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    env:
+      HAS_COSIGN: ${{ secrets.COSIGN_PRIVATE_KEY != '' }}
+      HAS_APT: ${{ secrets.APT_GPG_KEY != '' }}
+      HAS_SB: ${{ secrets.SB_SIGNING_KEY != '' && secrets.SB_SIGNING_CERT != '' }}
+      HAS_MODULES: ${{ secrets.MODULE_SIGNING_KEY != '' && secrets.MODULE_SIGNING_CERT != '' }}
+    outputs:
+      restart: ${{ steps.dispatch.outputs.restart }}
+      signing_active: ${{ steps.need.outputs.signing_active }}
+      # The plan, forced to "nothing" when this run hands over to a new one.
+      env: ${{ steps.dispatch.outputs.restart == 'yes' && 'false' || needs.changes.outputs.env }}
+      debs: ${{ steps.dispatch.outputs.restart == 'yes' && 'false' || needs.changes.outputs.debs }}
+      image: ${{ steps.dispatch.outputs.restart == 'yes' && 'false' || needs.changes.outputs.image }}
+      iso: ${{ steps.dispatch.outputs.restart == 'yes' && 'false' || needs.changes.outputs.iso }}
+      img_rpi: ${{ steps.dispatch.outputs.restart == 'yes' && 'false' || needs.changes.outputs.img_rpi }}
+      img_gallium: ${{ steps.dispatch.outputs.restart == 'yes' && 'false' || needs.changes.outputs.img_gallium }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: need
+        shell: bash
+        env:
+          OVERRIDE: ${{ inputs.sign_modules }}
+          PLAN_DEBS: ${{ needs.changes.outputs.debs }}
+          PLAN_IMAGE: ${{ needs.changes.outputs.image }}
+          PLAN_ISO: ${{ needs.changes.outputs.iso }}
+        run: |
+          set -euo pipefail
+          # Module signing mode: the dispatch override beats config.yml.
+          mode=nosign
+          if [ -n "${OVERRIDE}" ]; then
+            mode="${OVERRIDE}"
+          elif [ -f config.yml ]; then
+            mode=$(python3 -c "
+          import yaml
+          try:
+              d = yaml.safe_load(open('config.yml')) or {}
+              print(d.get('signing', {}).get('modules', {}).get('default', 'nosign'))
+          except Exception:
+              print('nosign')
+          ")
+          fi
+          active=no
+          groups=()
+          if [ "${PLAN_IMAGE}" = true ] && [ "${HAS_COSIGN}" != true ]; then
+            groups+=(cosign)
+          fi
+          if { [ "${PLAN_DEBS}" = true ] || [ "${PLAN_IMAGE}" = true ] \
+              || [ "${PLAN_ISO}" = true ]; } && [ "${HAS_APT}" != true ]; then
+            groups+=(apt)
+          fi
+          if [ "${PLAN_DEBS}" = true ] && [ "${HAS_SB}" != true ]; then
+            groups+=(sb)
+          fi
+          case "${mode}" in
+            sign|both)
+              if [ "${HAS_MODULES}" = true ]; then
+                active=yes
+                # One image per variant: enforcement is decided at install by
+                # the bootc-installer (module.sig_enforce=1 karg), not by a
+                # second kernel package.
+              elif [ "${PLAN_DEBS}" = true ]; then
+                groups+=(modules)
+              fi
+              ;;
+          esac
+          echo "signing_active=${active}" >>"$GITHUB_OUTPUT"
+          echo "groups=${groups[*]:-}" >>"$GITHUB_OUTPUT"
+          echo "module signing mode=${mode} active=${active}; missing: ${groups[*]:-none}"
+      - name: Fetch the shared tooling
+        if: ${{ steps.need.outputs.groups != '' }}
+        uses: actions/checkout@v7
+        with:
+          repository: DaemonCores/DaemonCores-CI
+          ref: main
+          path: .ci-tooling
+          persist-credentials: false
+      - name: Install cosign
+        if: ${{ contains(steps.need.outputs.groups, 'cosign') }}
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2 (le tag @v3 = la commit pré-arm64 qui tue les builds images arm64)
+        with:
+          cosign-release: v2.6.5
+      - name: Generate the missing secrets
+        id: ensure
+        if: ${{ steps.need.outputs.groups != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_PAT }}
+          GROUPS_MISSING: ${{ steps.need.outputs.groups }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086  # one argument per missing group
+          .ci-tooling/scripts/ensure-secrets.sh ${GROUPS_MISSING}
+      - name: Start a new run now that the secrets exist
+        id: dispatch
+        if: ${{ steps.ensure.outputs.created != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CREATED: ${{ steps.ensure.outputs.created }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          PIPELINE_OVERRIDE: ${{ inputs.pipeline_workflow }}
+          REF_NAME: ${{ github.ref_name }}
+          P_ENV: ${{ needs.changes.outputs.env }}
+          P_DEBS: ${{ needs.changes.outputs.debs }}
+          P_IMAGE: ${{ needs.changes.outputs.image }}
+          P_ISO: ${{ needs.changes.outputs.iso }}
+          P_RPI: ${{ needs.changes.outputs.img_rpi }}
+          P_GALLIUM: ${{ needs.changes.outputs.img_gallium }}
+          UPDATE_BASE: ${{ inputs.update_base }}
+          SIGN_MODULES: ${{ inputs.sign_modules }}
+        run: |
+          set -euo pipefail
+          # Caller workflow file: owner/repo/.github/workflows/<file>@<ref>.
+          file="${PIPELINE_OVERRIDE}"
+          if [ -z "${file}" ]; then
+            file="${WORKFLOW_REF#*/.github/workflows/}"
+            file="${file%%@*}"
+          fi
+          # Only pass the inputs the caller workflow declares: callers differ
+          # (one has no gallium/rpi checkbox, another no update_base) and
+          # workflow dispatch rejects any undeclared input with HTTP 422.
+          declared=$(gh workflow view "${file}" --ref "${REF_NAME}" --yaml \
+            | yq '.on.workflow_dispatch.inputs // {} | keys | .[]')
+          args=()
+          add_input() {
+            if grep -qx "$1" <<<"${declared}"; then args+=(-f "$1=$2"); fi
+          }
+          add_input rebuild_env "${P_ENV}"
+          add_input run_debs "${P_DEBS}"
+          add_input run_image "${P_IMAGE}"
+          add_input run_iso "${P_ISO}"
+          add_input run_img_rpi "${P_RPI}"
+          add_input run_img_gallium "${P_GALLIUM}"
+          [ "${UPDATE_BASE}" != true ] || add_input update_base true
+          [ -z "${SIGN_MODULES}" ] || add_input sign_modules "${SIGN_MODULES}"
+          gh workflow run "${file}" --ref "${REF_NAME}" "${args[@]}" || {
+            echo "::error::Secrets were created (${CREATED}) but the new run could not be started." \
+              "Grant 'actions: write' to the calling workflow, or run it again by hand."
+            exit 1
+          }
+          echo "restart=yes" >>"$GITHUB_OUTPUT"
+          {
+            echo "### Signing secrets created"
+            echo "Created: \`${CREATED}\`."
+            echo "GitHub only exposes new secrets to the next run, so this run stops here"
+            echo "and \`${file}\` was started again with the same plan."
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  # The image build pins the checksum of the APT repository public key. It is
+  # derived here from the APT_GPG_KEY secret (the published key must carry the
+  # secret's fingerprint), so nothing is committed after a key rotation.
+  apt_key:
+    name: Derive the APT key pin
+    needs: [prepare, debs_publish]
+    if: |
+      !cancelled() &&
+      needs.prepare.outputs.image == 'true' &&
+      (needs.debs_publish.result == 'success' || needs.debs_publish.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # The secrets context is not available to step conditions: go through env.
+      HAS_APT: ${{ secrets.APT_GPG_KEY != '' }}
+    outputs:
+      sha256: ${{ steps.hash.outputs.sha256 }}
+      url: ${{ steps.url.outputs.url }}
+    steps:
+      - id: url
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY%%/*}"
+          repo="${GITHUB_REPOSITORY#*/}"
+          echo "url=https://${owner,,}.github.io/${repo}" >>"$GITHUB_OUTPUT"
+      - name: Fetch the shared tooling
+        if: ${{ env.HAS_APT == 'true' }}
+        uses: actions/checkout@v7
+        with:
+          repository: DaemonCores/DaemonCores-CI
+          ref: main
+          path: .ci-tooling
+          persist-credentials: false
+      - id: hash
+        if: ${{ env.HAS_APT == 'true' }}
+        shell: bash
+        env:
+          APT_GPG_KEY: ${{ secrets.APT_GPG_KEY }}
+          KEY_URL: ${{ steps.url.outputs.url }}/gpg.key
+        run: |
+          set -euo pipefail
+          sha=$(.ci-tooling/scripts/apt-key-hash.sh)
+          echo "sha256=${sha}" >>"$GITHUB_OUTPUT"
+          echo "Pinned APT key checksum: ${sha}"
+
+      # P-44/P-45 drain: close the env copy of the APT secret; the script
+      # already shredded the armored key it wrote to its GNUPGHOME temp dir.
+      - name: Purge the signing material
+        if: ${{ always() && env.HAS_APT == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset APT_GPG_KEY
+          bash .ci-tooling/scripts/purge-signing-secrets.sh
+
+  build_env:
+    name: Rebuild the deb-builder env image
+    needs: [prepare]
+    # Monthly schedule, checkbox, or a push touching workflows/build-env/.
+    # Single-arch: the build-env image is the host toolchain (buildah on amd64);
+    # it builds both amd64 and arm64 debs via the arch-aware waves below.
+    if: ${{ !cancelled() && needs.prepare.outputs.env == 'true' }}
+    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-env.yml@main
+    secrets: inherit
+
+  debs_amd64:
+    name: Build .deb packages (amd64)
+    needs: [prepare, base, build_env]
+    # The nested waveN jobs in bootc-debs-builder.yml (and build-one-deb.yml's
+    # build job) request 'actions: write' to delete stale CI artifacts via the
+    # gh api DELETE endpoint. GitHub intersects the caller's top-level/job-level
+    # permissions with the callee's request, and the top-level block of this
+    # workflow grants only contents/packages/pages/id-token/issues — so the
+    # intersection collapses to 'actions: none' and the nested call is rejected
+    # with "The nested job 'wave0' is requesting 'actions: write', but is only
+    # allowed 'actions: none'". Granting actions: write here (job-level) keeps
+    # least-privilege: only the debs callers get it, not the whole workflow.
+    permissions:
+      actions: write
+      contents: write
+      packages: write
+      pages: write
+      id-token: write
+      issues: write
+    if: |
+      !cancelled() &&
+      needs.prepare.outputs.debs == 'true' &&
+      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
+      (needs.build_env.result == 'success' || needs.build_env.result == 'skipped')
+    uses: ./.github/workflows/bootc-debs-builder-local.yml
+    with:
+      arch: amd64
+      signing_active: ${{ needs.prepare.outputs.signing_active }}
+      gpu_driver: ${{ inputs.gpu_driver == 'true' && 'yes' || 'no' }}
+      only: ${{ inputs.only_deb }}
+      deploy_pages: false
+    secrets: inherit
+
+  debs_arm64:
+    name: Build .deb packages (arm64)
+    needs: [prepare, base, build_env]
+    # Same actions: write grant as debs_amd64 — see that job's comment for the
+    # rationale (nested waveN jobs need to delete stale artifacts via gh api).
+    permissions:
+      actions: write
+      contents: write
+      packages: write
+      pages: write
+      id-token: write
+      issues: write
+    if: |
+      !cancelled() &&
+      needs.prepare.outputs.debs == 'true' &&
+      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
+      (needs.build_env.result == 'success' || needs.build_env.result == 'skipped')
+    uses: ./.github/workflows/bootc-debs-builder-local.yml
+    with:
+      arch: arm64
+      signing_active: ${{ needs.prepare.outputs.signing_active }}
+      gpu_driver: ${{ inputs.gpu_driver == 'true' && 'yes' || 'no' }}
+      only: ${{ inputs.only_deb }}
+      deploy_pages: false
+    secrets: inherit
+
+  # Single publish job that waits for both arches to finish before deploying
+  # the APT repo to GitHub Pages. This prevents the duplicate github-pages
+  # artifact error that occurs when amd64 and arm64 both run their own publish
+  # step concurrently (actions/upload-pages-artifact creates an artifact always
+  # named "github-pages"; two parallel uploads conflict at deploy time).
+  debs_publish:
+    name: Publish .deb packages (APT repo → GitHub Pages)
+    needs: [prepare, debs_amd64, debs_arm64]
+    if: |
+      always() && !cancelled() &&
+      needs.prepare.outputs.debs == 'true' &&
+      (needs.debs_amd64.result == 'success' || needs.debs_amd64.result == 'failure') &&
+      (needs.debs_arm64.result == 'success' || needs.debs_arm64.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      # actions: write: the bootc-debs-end composite drops the stale
+      # github-pages artifact of the run before its upload (a re-run of the
+      # failed debs_publish job would otherwise leave two github-pages
+      # artifacts and deploy-pages refuses the deployment — run 41757412975).
+      actions: write
+      pages: write
+      id-token: write
+    outputs:
+      any_rebuilt: ${{ steps.end.outputs.any_rebuilt }}
+    steps:
+      - id: repo
+        shell: bash
+        run: |
+          name="${GITHUB_REPOSITORY##*/}"
+          echo "name=${name,,}" >> "$GITHUB_OUTPUT"
+      - id: end
+        uses: DaemonCores/DaemonCores-CI/bootc-debs-end@main
+        with:
+          repo_name: ${{ steps.repo.outputs.name }}
+          apt_gpg_key: ${{ secrets.APT_GPG_KEY }}
+
+  # Aggregate any_rebuilt from both arches: a rebuild on either arch forces a
+  # no-cache image rebuild. workflow_call outputs from reusable workflows are
+  # available via needs.<job>.outputs only for jobs that declared them.
+  debs_aggregate:
+    name: Aggregate debs outputs
+    needs: [debs_amd64, debs_arm64, debs_publish]
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: ubuntu-latest
+    outputs:
+      any_rebuilt: ${{ steps.agg.outputs.any_rebuilt }}
+    steps:
+      - id: agg
+        run: |
+          set -euo pipefail
+          any=false
+          [ "${{ needs.debs_amd64.outputs.any_rebuilt }}" = "true" ] && any=true || true
+          [ "${{ needs.debs_arm64.outputs.any_rebuilt }}" = "true" ] && any=true || true
+          [ "${{ needs.debs_publish.outputs.any_rebuilt }}" = "true" ] && any=true || true
+          echo "any_rebuilt=${any}" >> "$GITHUB_OUTPUT"
+
+  # bootc-build.yml already builds both arches (its discover job emits a
+  # matrix over amd64 + arm64). A single call is enough; two calls would
+  # double the work and create manifest-list race conditions on GHCR.
+  image:
+    name: Build container images (amd64 + arm64)
+    needs: [prepare, debs_aggregate, base, apt_key]
+    if: |
+      !cancelled() &&
+      needs.prepare.outputs.image == 'true' &&
+      (needs.apt_key.result == 'success' || needs.apt_key.result == 'skipped') &&
+      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
+      (needs.debs_aggregate.result == 'success' || needs.debs_aggregate.result == 'skipped')
+    uses: DaemonCores/DaemonCores-CI/.github/workflows/bootc-build.yml@main
+    with:
+      # Force a no-cache image rebuild when at least one .deb was rebuilt on
+      # either arch (schedule already forces no-cache inside bootc-build.yml).
+      force_no_cache: ${{ needs.debs_aggregate.outputs.any_rebuilt == 'true' }}
+      # APT repository trust, derived from the APT_GPG_KEY secret (no hash is
+      # committed to the Containerfiles).
+      bootc_gpg_sha256: ${{ needs.apt_key.outputs.sha256 }}
+      apt_url: ${{ needs.apt_key.outputs.url }}
+    secrets: inherit
+
+  iso:
+    name: Build ISO
+    needs: [prepare, debs_publish, image, meta, base]
+    # !cancelled() runs the job (but stops on cancel) even when debs, image or base were skipped.
+    # The ISO is amd64-only today (Fedora netinstall + bootc), so it depends on
+    # the amd64 image; arm64 image is awaited via the shared `image` job to keep
+    # the pipeline a single wave. arm64 ISO support is pending a Fedora arm64
+    # netinstall source and a kickstart variant.
+    if: |
+      !cancelled() &&
+      needs.prepare.outputs.iso == 'true' &&
+      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
+      (needs.debs_publish.result == 'success' || needs.debs_publish.result == 'skipped') &&
+      (needs.image.result == 'success' || needs.image.result == 'skipped') &&
+      needs.meta.result == 'success'
+    uses: DaemonCores/DaemonCores-CI/.github/workflows/iso-builder.yml@main
+    with:
+      product_name: ${{ needs.meta.outputs.product_name }}
+    secrets: inherit
+
+  # ── Disk image (.img) ────────────────────────────────────────────────────
+  # Opt-in (workflow_dispatch checkboxes run_img_rpi / run_img_gallium, default
+  # false) AND auto-rebuilt on push when the format's dependencies change
+  # (Containerfile, kernel configs, packages.yml — see the `changes` job). On
+  # schedule it never runs (a .img is a flash target, not a monthly artifact).
+  #
+  # One job per (format, arch). GitHub Actions does NOT support per-matrix-entry
+  # `if:` on a `uses:` job (a job cannot mix `steps:` with `uses:`, and the
+  # job-level `if:` has no access to the `matrix` context), so per-format
+  # gating is implemented as two jobs — one per format — each gated by its own
+  # `changes.outputs.img_<format>` flag. This honours the task's per-format
+  # computation without building a format the operator did not request.
+  #
+  # Format availability (authoritative — matches the changes job):
+  #   rpi     -> arm64 only (Pi 3/4/5 are aarch64)
+  #   gallium -> arm64 only (gallium-amd64 was dropped; the format is now
+  #              arm64-only per the pipeline-format-choice task)
+  #
+  # `format` selects the image layout (see img-builder.yml):
+  #   rpi     -> Raspberry Pi bootable .img (FAT32 /boot with kernel + DTB +
+  #              config.txt + cmdline.txt, ext4 / with the ostree deployment)
+  #   gallium -> Linux Gallium raw .img (single ext4 root partition laid from
+  #              the container image; no phone-specific config)
+  # `arch` selects the container image arch to pull.
+  img_rpi:
+    name: Build rpi .img (arm64)
+    needs: [prepare, image, meta, base]
+    if: |
+      !cancelled() &&
+      needs.prepare.outputs.img_rpi == 'true' &&
+      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
+      (needs.image.result == 'success' || needs.image.result == 'skipped') &&
+      needs.meta.result == 'success'
+    uses: DaemonCores/DaemonCores-CI/.github/workflows/img-builder.yml@main
+    with:
+      target: rpi
+      arch: arm64
+      product_name: ${{ needs.meta.outputs.product_name }}
+    secrets: inherit
+
+  img_gallium:
+    name: Build gallium .img (arm64)
+    needs: [prepare, image, meta, base]
+    if: |
+      !cancelled() &&
+      needs.prepare.outputs.img_gallium == 'true' &&
+      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
+      (needs.image.result == 'success' || needs.image.result == 'skipped') &&
+      needs.meta.result == 'success'
+    uses: DaemonCores/DaemonCores-CI/.github/workflows/img-builder.yml@main
+    with:
+      target: gallium
+      arch: arm64
+      product_name: ${{ needs.meta.outputs.product_name }}
+    secrets: inherit

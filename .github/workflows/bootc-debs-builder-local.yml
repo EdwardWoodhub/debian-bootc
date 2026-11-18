@@ -1,0 +1,303 @@
+name: Build & Publish Bootc .deb
+
+# Generic, manifest-driven builder. setup reads workflows/bootc-debs-builder/
+# packages.yml, computes dependency waves (topological levels), and each wave is
+# a matrix that builds its packages in parallel via the build-one-deb reusable
+# workflow. A package with deps lands in a later wave and installs its deps'
+# debs first. Independent packages all run together in wave 0.
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      arch:
+        description: 'Target architecture (amd64 or arm64). Forwarded to build-one-deb and to the yq binary download.'
+        required: false
+        type: string
+        default: amd64
+      signing_active:
+        description: 'yes to sign .ko files; empty/no to skip. Forwarded to build-one-deb.'
+        required: false
+        type: string
+        default: 'no'
+      gpu_driver:
+        description: 'yes to also build the packages marked when.gpu-driver (opt-in GPU entries, e.g. the proprietary NVIDIA libs; private build); anything else drops them.'
+        required: false
+        type: string
+        default: 'no'
+      deploy_pages:
+        description: 'true to upload and deploy the APT repo to GitHub Pages. Set false when a separate debs_publish job handles deployment (prevents duplicate github-pages artifacts when amd64 and arm64 both run publish in the same workflow run).'
+        required: false
+        type: boolean
+        default: true
+      only:
+        description: 'Dispatch filter: keep only the packages whose expanded name is <only> or starts with <only>- (e.g. only=zfs-module-pve builds every zfs-module-pve-* variant; only=zfs-module-pve-x64v3 builds one). Empty = keep everything.'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      APT_GPG_KEY:
+        required: false
+      SB_SIGNING_KEY:
+        required: false
+      SB_SIGNING_CERT:
+        required: false
+    outputs:
+      any_rebuilt:
+        description: 'true if at least one package was rebuilt (not cache-reused).'
+        value: ${{ jobs.publish.outputs.any_rebuilt }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      wave0: ${{ steps.waves.outputs.wave0 }}
+      wave1: ${{ steps.waves.outputs.wave1 }}
+      wave2: ${{ steps.waves.outputs.wave2 }}
+      wave3: ${{ steps.waves.outputs.wave3 }}
+      env_image: ${{ steps.waves.outputs.env_image }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Checkout CI tooling
+        uses: actions/checkout@v7
+        with:
+          repository: DaemonCores/DaemonCores-CI
+          ref: main
+          path: .ci-tooling
+          persist-credentials: false
+
+      # Arch-aware yq download: pick the binary matching the runner arch.
+      # The setup job runs on the amd64 runner regardless of the target
+      # arch (it only computes the wave plan), so the yq binary must match
+      # the RUNNER arch, not the target build arch. Detect the native arch
+      # via dpkg --print-architecture (fallback to uname -m on non-Debian).
+      - name: Install yq
+        shell: bash
+        run: |
+          set -euo pipefail
+          yarch="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+          case "$yarch" in
+            aarch64|arm64) yarch=arm64 ;;
+            x86_64|amd64)  yarch=amd64 ;;
+          esac
+          curl -fsSL \
+            "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yarch}" \
+            -o /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+
+      # Expand variants (and drop the other arch's packages) once, here. The
+      # wave plan, the job matrix and every downstream build then work on plain
+      # packages, and there is a single place that knows about templates.
+      - name: Expand manifest variants
+        id: expand
+        uses: DaemonCores/DaemonCores-CI/manifest-expand@main
+        with:
+          arch: ${{ inputs.arch }}
+          # One kernel per (arch, page size): nothing in the manifest carries
+          # `when: {unsigned-kernel: true}` anymore (L1), the filter drops none.
+          unsigned-kernel: 'no'
+          gpu-driver: ${{ inputs.gpu_driver == 'yes' && 'yes' || 'no' }}
+
+      # Dispatch filter (owner 05/11 08:57: build a SINGLE entry without
+      # disturbing the rest of the lane): keep only the packages whose
+      # expanded name is ONLY or starts with ONLY- (variant expansion:
+      # zfs-module-pve -> zfs-module-pve-x64v3, ...). Applied AFTER expand
+      # so the wave planner, the matrix and every build job see exactly the
+      # filtered set. Empty ONLY = unfiltered (the normal push path).
+      - name: Dispatch-only filter
+        if: ${{ inputs.only != '' }}
+        shell: bash
+        env:
+          ONLY: ${{ inputs.only }}
+          # A family prefix may end with a dash (only=gpu- matches every
+          # gpu-* variant); a bare name keeps its exact-name plus -variants
+          # semantics.
+          PREFIX: ${{ inputs.only }}
+        run: |
+          set -euo pipefail
+          [[ "${PREFIX}" == *- ]] || { PREFIX="${PREFIX}-"; }
+          export PREFIX
+          man="${{ steps.expand.outputs.manifest }}"
+          # The FULL expanded map, captured BEFORE the keep filter: the
+          # closure reads the dependency edges of the dropped packages.
+          yq -o=json '.' "$man" > "$man.full.json"
+          yq -o=json '.packages = [.packages[]
+            | select(.name == env(ONLY) or (.name | test("^" + env(PREFIX))))]' \
+            "$man" > "$man.tmp"
+          kept=$(yq '.packages | length' "$man.tmp")
+          # An amd64-only package family (zfs-module-pve, gpu sets, ...) is a
+          # clean no-op on arm64: empty manifest -> waves == '[]' -> every
+          # matrix below skips. 0 matches on amd64 still means a typo in
+          # `only` (it owns every family's canonical spelling) = hard error.
+          if test "${kept:-0}" -eq 0; then
+            if test "${{ inputs.arch }}" = "amd64"; then
+              { echo "ERROR: only=${ONLY} matched 0 packages in the expanded manifest (amd64)" >&2; exit 1; }
+            fi
+            echo "WARN: only=${ONLY} matched 0 packages on arch=${{ inputs.arch }} — skipping this arch (amd64-only family)" >&2
+            yq -o=json '.packages = []' "$man" > "$man.tmp2" && mv "$man.tmp2" "$man.tmp"
+          fi
+          yq -P '.' "$man.tmp" > "$man" && rm -f "$man.tmp"
+          echo "only=${ONLY}: kept ${kept} package(s):" \
+            "$(yq '.packages[].name' "$man" | tr '\n' ' ')"
+          # Deps dropped by this filter cannot be satisfied intra-run (no
+          # wave, no /tmp/prior deb): strip them so the package builds with
+          # its OWN fallback source (zfs-module-pve: the published APT
+          # index of a previous green run). Unfiltered path untouched.
+          # Dependency closure FIRST: a consumer (gpu/modules) cannot build
+          # without its profile kernel (Module.symvers) — the kernel debs ride
+          # the content cache, so the cycle stays a minutes affair (the plain
+          # filter died on the empty /tmp/prior pool, run 43224452266).
+          python3 .ci-tooling/scripts/only-deps-closure.py "$man.full.json" "$ONLY"
+          python3 .ci-tooling/scripts/prune_unsatisfiable_deps.py "$man.full.json"
+          yq -P '.' "$man.full.json" > "$man" && rm -f "$man.full.json"
+
+      - name: Compute dependency waves
+        id: waves
+        shell: bash
+        env:
+          ARCH: ${{ inputs.arch }}
+          MAN: ${{ steps.expand.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          # Per-arch build-env image (built by build-env.yml as
+          # :buildenv-<arch> so each arch's .deb builds on a matching-arch
+          # build-env). Falls back to :buildenv for the default amd64 to keep
+          # zero regression while the per-arch tags roll out.
+          arch="${ARCH:-amd64}"
+          echo "env_image=ghcr.io/${GITHUB_REPOSITORY,,}:buildenv-${arch}" \
+            >>"$GITHUB_OUTPUT"
+          yq -o=json '.' "${MAN}" >/tmp/pkgs.json
+          python3 .ci-tooling/scripts/dependency-waves.py /tmp/pkgs.json
+          # Loud diagnostics: the wave plan is the contract of every matrix
+          # below — an empty wave1 whose deps land downstream prints here
+          # instead of surfacing as literal-glob apt errors in the wave jobs.
+          grep '^wave' "$GITHUB_OUTPUT" | while IFS= read -r ln; do
+            echo "WAVES: ${ln}"
+          done
+
+  wave0:
+    needs: setup
+    if: ${{ needs.setup.outputs.wave0 != '[]' }}
+    permissions:
+      actions: write
+      issues: write
+      contents: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.setup.outputs.wave0) }}
+    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-one-deb.yml@main
+    with:
+      package: ${{ matrix.package }}
+      container_image: ${{ needs.setup.outputs.env_image }}
+      arch: ${{ inputs.arch }}
+      signing_active: ${{ inputs.signing_active }}
+    secrets: inherit
+
+  wave1:
+    needs: [setup, wave0]
+    if: ${{ always() && !cancelled() && needs.setup.outputs.wave1 != '[]' }}
+    permissions:
+      actions: write
+      issues: write
+      contents: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.setup.outputs.wave1) }}
+    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-one-deb.yml@main
+    with:
+      package: ${{ matrix.package }}
+      container_image: ${{ needs.setup.outputs.env_image }}
+      arch: ${{ inputs.arch }}
+      signing_active: ${{ inputs.signing_active }}
+    secrets: inherit
+
+  wave2:
+    needs: [setup, wave1]
+    # always() lets wave2 run even when wave1 has partial failures (some
+    # packages may still build successfully if their specific deps succeeded).
+    if: ${{ always() && !cancelled() && needs.setup.outputs.wave2 != '[]' }}
+    permissions:
+      actions: write
+      issues: write
+      contents: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.setup.outputs.wave2) }}
+    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-one-deb.yml@main
+    with:
+      package: ${{ matrix.package }}
+      container_image: ${{ needs.setup.outputs.env_image }}
+      arch: ${{ inputs.arch }}
+      signing_active: ${{ inputs.signing_active }}
+    secrets: inherit
+
+  wave3:
+    needs: [setup, wave2]
+    if: ${{ always() && !cancelled() && needs.setup.outputs.wave3 != '[]' }}
+    permissions:
+      actions: write
+      issues: write
+      contents: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.setup.outputs.wave3) }}
+    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-one-deb.yml@main
+    with:
+      package: ${{ matrix.package }}
+      container_image: ${{ needs.setup.outputs.env_image }}
+      arch: ${{ inputs.arch }}
+      signing_active: ${{ inputs.signing_active }}
+    secrets: inherit
+
+  publish:
+    needs: [setup, wave0, wave1, wave2, wave3]
+    # always() && !cancelled(): run even when some wave jobs fail so that
+    # hashes.json is updated for packages that succeeded. Without this,
+    # any single failure blocks ALL packages from caching, causing every
+    # package to rebuild on every run. Packages that failed without a prior
+    # deb have no .meta file and are simply retried next run.
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    outputs:
+      any_rebuilt: ${{ steps.end.outputs.any_rebuilt }}
+    steps:
+      - id: repo
+        shell: bash
+        run: |
+          name="${GITHUB_REPOSITORY##*/}"          # cut at the slash -> repo name
+          echo "name=${name,,}" >> "$GITHUB_OUTPUT"  # lowercase
+
+      - id: end
+        uses: DaemonCores/DaemonCores-CI/bootc-debs-end@main
+        with:
+          repo_name: ${{ steps.repo.outputs.name }}
+          apt_gpg_key: ${{ secrets.APT_GPG_KEY }}
+          skip_pages: ${{ !inputs.deploy_pages }}
+          # ALWAYS carry the prior debs over. Before 14/11 this was armed
+          # only on failure/cancelled, so a SUCCESSFUL scoped run published
+          # its own debs alone and erased the rest of the pool — that is
+          # how the site lost its amd64 half and later the whole index.
+          # carry_over only restores packages the current run did NOT
+          # rebuild (they carry no .meta), so a full run is unaffected.
+          carry_over: true
+
+      # P-44/P-45 drain: the APT repository GPG secret was passed to the
+      # publish action above; the final step unsets the env copy of the job.
+      - name: Purge the signing material
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset APT_GPG_KEY
