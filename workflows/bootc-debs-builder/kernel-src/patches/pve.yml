@@ -85,7 +85,7 @@ patches:
       - name: 0008-kvm-xsave-set-mask-out-PKRU-bit-in-xfeatures-if-vCPU.patch
         url: https://raw.githubusercontent.com/proxmox/pve-kernel/master/patches/kernel/0008-kvm-xsave-set-mask-out-PKRU-bit-in-xfeatures-if-vCPU.patch
         stage: common
-        sha256: d5ed1b5ab7b2b56a67fa0aff6625987f182d8e5dcdbd31570ce18596654762ab
+        sha256: 91ce966760af2502f2bec70e66d6a0cbdc4941c985b5a195b99361e073d3d3bc
         license: GPL-2.0-only
       - name: 0010-revert-memfd-improve-userspace-warnings-for-missing-.patch
         url: https://raw.githubusercontent.com/proxmox/pve-kernel/master/patches/kernel/0010-revert-memfd-improve-userspace-warnings-for-missing-.patch
