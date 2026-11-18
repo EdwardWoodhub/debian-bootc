@@ -125,12 +125,8 @@ packages:
       # run 42899558906). The bump forces the one rebuild that records the
       # headers debs in hashes.json; every later run restores them.
       HEADERS_GLOB_VER: "2"
-    track:
-      KERNEL_VER:
-        kernel-org: stable
-        require-patches: engine
-        digests:
-          KERNEL_SHA256: "linux-{version}.tar.xz"
+      KERNEL_VER: "7.3.5"
+      KERNEL_SHA256: "8f293f83d54f0b7b9be56863ebc5e4ea79d73e530b4ae55c572be97ef39f0990"
     deb-glob: "linux-image-common-* linux-headers-*"
     sources:
       # IA gpu overlay + THP fragments: a profile change rebuilds only its
@@ -591,12 +587,8 @@ packages:
       # `track:` resolution as the linux-image entry — deterministic (same
       # manifests, same floor), so the device-module debs are electable in
       # step with the image they build against.
-    track:
-      KERNEL_VER:
-        kernel-org: stable
-        require-patches: engine
-        digests:
-          KERNEL_SHA256: "linux-{version}.tar.xz"
+      KERNEL_VER: "7.3.5"
+      KERNEL_SHA256: "8f293f83d54f0b7b9be56863ebc5e4ea79d73e530b4ae55c572be97ef39f0990"
     sources:
       - preinstall/output/linux-modules-arm-device
       # The device fragments of this repo (per-DEVICE overlay of the build):
@@ -875,12 +867,8 @@ packages:
     # its Depends in step with the elected kernel (deterministic).
     env:
       HELPERS_VER: 8
-    track:
-      KERNEL_VER:
-        kernel-org: stable
-        require-patches: engine
-        digests:
-          KERNEL_SHA256: "linux-{version}.tar.xz"
+      KERNEL_VER: "7.3.5"
+      KERNEL_SHA256: "8f293f83d54f0b7b9be56863ebc5e4ea79d73e530b4ae55c572be97ef39f0990"
     sources:
       - preinstall/output/linux-modules-gpu
       # The per-set kconfig overlays and the loader-policy confs of this
