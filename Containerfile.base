@@ -42,7 +42,8 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 # Phase 1: SSL prerequisites + APT sources (debianpreinstall)
 # -----------------------------------------------------------------------------
 COPY ./src/debianpreinstall /
-RUN apt update \
+RUN echo 'Acquire::http::AllowRedirect "true";' > /etc/apt/apt.conf.d/99allow-redirect \
+    && apt update \
     && apt install -y --no-install-recommends \
         ca-certificates \
         openssl \

@@ -595,7 +595,7 @@ jobs:
       (needs.apt_key.result == 'success' || needs.apt_key.result == 'skipped') &&
       (needs.base.result == 'success' || needs.base.result == 'skipped') &&
       (needs.debs_aggregate.result == 'success' || needs.debs_aggregate.result == 'skipped')
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/bootc-build.yml@main
+    uses: ./.github/workflows/bootc-build-local.yml
     with:
       # Force a no-cache image rebuild when at least one .deb was rebuilt on
       # either arch (schedule already forces no-cache inside bootc-build.yml).

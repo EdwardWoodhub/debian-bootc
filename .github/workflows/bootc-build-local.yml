@@ -1,0 +1,452 @@
+name: Container Image CI
+
+on:
+  workflow_call:
+    inputs:
+      force_no_cache:
+        description: 'Force a --no-cache image rebuild (e.g. a .deb changed).'
+        type: boolean
+        required: false
+        default: false
+      bootc_gpg_sha256:
+        description: >-
+          SHA-256 of the published APT public key, derived by the pipeline from
+          the APT_GPG_KEY secret. Empty keeps the Containerfile default.
+        type: string
+        required: false
+        default: ''
+      apt_url:
+        description: 'Base URL of the published APT repository (empty keeps the Containerfile default).'
+        type: string
+        required: false
+        default: ''
+
+    secrets:
+      COSIGN_PUBLIC_KEY:
+        required: false
+      COSIGN_PRIVATE_KEY:
+        required: false
+      COSIGN_PASSWORD:
+        required: false
+
+jobs:
+  # Discover every Containerfile* at the repo root and emit the build matrix
+  # grouped by architecture: arch_matrix is a list of { arch, runner, entries },
+  # where entries lists, in build order, the images of that architecture as
+  # { file, tag, arch, kernel_suffix, twin_suffix }. Both arches (amd64, arm64)
+  # are always included; one job per architecture builds all its images. There is one image per tag: automatic
+  # updates are a run-time choice (the bootc-fetch-apply-updates.timer, masked
+  # through a symlink in /etc), not an image variant.
+  # A Containerfile that carries `LABEL org.daemoncores.arm64-4k-image` ships two
+  # arm64 kernels because the page size is a compile-time choice and one image
+  # holds one kernel. The plain tag is the 16 KB kernel (kernel_suffix `-16k`)
+  # for recent hardware; a second, arm64-only image tagged `<tag>-4k`
+  # (kernel_suffix empty) serves the older devices (Raspberry Pi 3 and 4) whose
+  # cores have no 16 KB granule. Without the LABEL, arm64 builds the 4 KB kernel.
+  # Containerfile.base is the shared base every other Containerfile builds on: it is
+  # not an image of its own (no matrix entry, never pushed) but it takes part in the
+  # global hash. Each build job builds it once, then each image on the cached
+  # layers (the `twin_suffix` entry key stays for the per-image row schema).
+  # An image whose Containerfile starts FROM another image of this repository (the
+  # installer) is recognised by the build job, which builds it after the tests of
+  # its parent.
+  # Also computes a global hash over all Containerfiles so any variant change
+  # invalidates every variant's "identical to previous" cache.
+  #
+  # A Containerfile carrying `LABEL org.daemoncores.arches="amd64"` (or a list)
+  # is built for those architectures only, in the same per-arch job as the
+  # others; its manifest list covers the same architectures.
+  # A second output, manifest_matrix, lists the unique tags with the `arches`
+  # the manifest list covers (both for a regular tag, arm64 only for a `-4k`
+  # tag).
+  discover:
+    name: Discover Containerfiles
+    runs-on: ubuntu-latest
+    outputs:
+      arch_matrix: ${{ steps.list.outputs.arch_matrix }}
+      manifest_matrix: ${{ steps.list.outputs.manifest_matrix }}
+      global_hash: ${{ steps.list.outputs.global_hash }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: List Containerfiles and build matrix
+        id: list
+        run: |
+          set -euo pipefail
+          # Find every Containerfile* at the repo root (maxdepth 1). Sorted for
+          # deterministic ordering across runs.
+          mapfile -t files < <(find . -maxdepth 1 -type f -name 'Containerfile*' \
+            | sed 's|^\./||' | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No Containerfile found at repo root." >&2
+            exit 1
+          fi
+          matrix='[]'
+          manifest_matrix='[]'
+          global_inputs=""
+          for name in "${files[@]}"; do
+            if [[ "$name" == "Containerfile.base" ]]; then
+              global_inputs+="${name} $(sha256sum "$name" | cut -d' ' -f1)"$'\n'
+              continue
+            fi
+            # A Containerfile with `LABEL org.daemoncores.twin=<primary>` builds
+            # a THIN TWIN of that primary image (owner GO, 2026-11-03 12:50:
+            # both OCI tags published): it is NOT its own image — it is added
+            # to the matrix as the primary's twin row (same file, one thin
+            # derived layer, no second kernel build), so the per-arch tags are
+            # `<primary>_<arch>-<suffix>` and the manifest list is
+            # `<primary>-<suffix>`). This is the tag-mirror of the -4k
+            # mechanism below: discover only re-targets the twin file to its
+            # primary.
+            twin_ts=""
+            twin_primary=$(sed -nE 's/^[[:space:]]*LABEL[[:space:]]+org\.daemoncores\.twin="?([a-z0-9._-]+)"?.*/\1/p' "$name" \
+              | head -n1)
+            if [[ -n "${twin_primary}" ]]; then
+              twin_ts="${name#Containerfile.}"
+            fi
+            if [[ "$name" == "Containerfile" ]]; then
+              tag="latest"
+            else
+              tag="${name#Containerfile.}"
+            fi
+            # A Containerfile with the 4 KB image LABEL builds the 16 KB kernel on the
+            # plain arm64 tag; otherwise arm64 stays on the 4 KB kernel.
+            has_4k=false
+            if grep -qE '^[[:space:]]*LABEL[[:space:]]+org\.daemoncores\.arm64-4k-image' "$name"; then
+              has_4k=true
+            fi
+            if [[ -n "${twin_ts}" ]]; then
+              # Twin of the primary: ONE thin per-arch image entry, no manifest
+              # on its own file — the manifest list is the primary-minus-twin
+              # name below. The twin is built (wave 2, derived) after its
+              # parent passed its boot tests.
+              matrix=$(printf '%s' "$matrix" | jq -c \
+                --arg file "$name" --arg tag "${twin_primary}" --arg ts "${twin_ts}" \
+                '. += [{file: $file, tag: $tag, arch: "amd64", kernel_suffix: "", twin_suffix: $ts}]')
+              manifest_matrix=$(printf '%s' "$manifest_matrix" | jq -c \
+                --arg tag "${twin_primary}-${twin_ts}" --arg p "${twin_primary}" --arg t "${twin_ts}" \
+                --argjson arches '["amd64"]' \
+                '. += [{tag: $tag, arches: $arches, primary: $p, twin: $t}]')
+              global_inputs+="${name} $(sha256sum "$name" | cut -d' ' -f1)"$'\n'
+              continue
+            fi
+            # ONE kernel image per variant: module-signature enforcement is an
+            # install-time bootc-installer choice (module.sig_enforce=1 karg),
+            # not a second kernel package — no -nosign twin is planned.
+            # An `org.daemoncores.arches` LABEL (space or comma separated) limits
+            # the image to those architectures (a vendor-binary image with no
+            # build for the other one); absent, both are built.
+            only_arches=$(sed -nE "s/^[[:space:]]*LABEL[[:space:]]+org\.daemoncores\.arches=[\"']?([a-z0-9, ]*).*/\1/p" "$name" \
+              | head -n1 | tr ',' ' ')
+            built_arches='[]'
+            for arch in amd64; do
+              if [[ -n "${only_arches// /}" && " ${only_arches} " != *" ${arch} "* ]]; then
+                continue
+              fi
+              built_arches=$(printf '%s' "$built_arches" | jq -c --arg a "$arch" '. += [$a]')
+              suffix=""
+              if [[ "$arch" == "arm64" && "$has_4k" == "true" ]]; then
+                suffix="-16k"
+              fi
+              matrix=$(printf '%s' "$matrix" | jq -c \
+                --arg file "$name" --arg tag "$tag" --arg arch "$arch" \
+                --arg ks "$suffix" \
+                '. += [{file: $file, tag: $tag, arch: $arch, kernel_suffix: $ks, twin_suffix: ""}]')
+            done
+            if [[ "$built_arches" == '[]' ]]; then
+              echo "::error::${name}: org.daemoncores.arches lists no known architecture" >&2
+              exit 1
+            fi
+            manifest_matrix=$(printf '%s' "$manifest_matrix" | jq -c \
+              --arg tag "$tag" --argjson arches "$built_arches" \
+              '. += [{tag: $tag, arches: $arches}]')
+            # The 4 KB arm64 kernel image for the older devices, when the
+            # Containerfile asks for it.
+            if false && [[ "$has_4k" == "true" ]]; then
+              matrix=$(printf '%s' "$matrix" | jq -c \
+                --arg file "$name" --arg tag "${tag}-4k" \
+                '. += [{file: $file, tag: $tag, arch: "arm64", kernel_suffix: "", twin_suffix: ""}]')
+              manifest_matrix=$(printf '%s' "$manifest_matrix" | jq -c \
+                --arg tag "${tag}-4k" \
+                '. += [{tag: $tag, arches: ["arm64"]}]')
+            fi
+            global_inputs+="${name} $(sha256sum "$name" | cut -d' ' -f1)"$'\n'
+          done
+          global_hash=$(printf '%s' "$global_inputs" | sha256sum | cut -d' ' -f1)
+          # Group the entries by architecture, keeping the order of the matrix
+          # (Containerfiles by name, the -4k image right after its parent). The
+          # runner of an architecture is the native one: no QEMU cross-build.
+          arch_matrix=$(printf '%s' "$matrix" | jq -c '
+            . as $m
+            | [([.[].arch] | unique)[] as $a | {
+                arch: $a,
+                runner: (if $a == "arm64" then "ubuntu-24.04-arm" else "ubuntu-latest" end),
+                entries: [$m[] | select(.arch == $a)]
+              }]')
+          echo "arch_matrix=${arch_matrix}" >>"$GITHUB_OUTPUT"
+          echo "manifest_matrix=$(printf '%s' "$manifest_matrix" | jq -c .)" >>"$GITHUB_OUTPUT"
+          echo "global_hash=${global_hash}" >>"$GITHUB_OUTPUT"
+          echo "Architecture matrix:"
+          printf '%s' "$arch_matrix" | jq .
+          echo "Manifest matrix:"
+          printf '%s' "$manifest_matrix" | jq .
+          echo "Global Containerfiles hash: ${global_hash}"
+
+  # One job per architecture builds, checks, tests, scans, pushes and signs ALL the
+  # images of that architecture on one shared local layer store: the setup (disk
+  # cleanup, checkout, login, package install, cache download) is paid once per
+  # architecture instead of once per image. scripts/image-ci/build-arch.sh holds
+  # the logic; a failing image is recorded and the others go on. The images built
+  # on another image of this run (the installer) are built after the tests of
+  # their parent, in the same job.
+  build-test-push:
+    name: Build images (${{ matrix.group.arch }})
+    needs: discover
+    runs-on: ${{ matrix.group.runner }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # { arch, runner, entries } per architecture, from the discover job.
+        # Both arches always build natively on their matching runner (no QEMU
+        # cross-build).
+        group: ${{ fromJSON(needs.discover.outputs.arch_matrix) }}
+
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android \
+            /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Fetch the shared tooling
+        uses: actions/checkout@v7
+        with:
+          repository: DaemonCores/DaemonCores-CI
+          ref: main
+          path: .ci-tooling
+          persist-credentials: false
+
+      - name: Install the tools
+        env:
+          ARCH: ${{ matrix.group.arch }}
+        run: bash .ci-tooling/scripts/image-ci/prepare.sh
+
+      # Boot-timeout calibration (DEBUG.md:565): image-test records the measured
+      # SSH wait per (arch, category) under this path; the restore-keys
+      # `restore-keys:` line picks the newest previous run's file so every run
+      # calibrates on the last one instead of a fixed multiplier.
+      - name: Restore the boot-timeout calibration
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/image-ci/image-test/boot-calibration.env
+          key: boot-calib-${{ matrix.group.arch }}-${{ github.run_id }}
+          restore-keys: boot-calib-${{ matrix.group.arch }}-
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Login Podman for build and push with podman fonctionality and for bootc standard
+          sudo podman login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin <<< "${GHCR_TOKEN}"
+
+          # Login Docker because github signe container with docker and not podman
+          docker login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin <<< "${GHCR_TOKEN}"
+
+      # Key-based signatures are stored as `.sig` tags, the format read by
+      # containers-image (`sigstoreSigned`); pinned to cosign 2.x which writes it.
+      - name: Install cosign
+        if: github.ref == 'refs/heads/main'
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        # LE TAG @v3 = figé sur l'objet tag de la commit pré-arm64 ("default
+        # cosign to v2.5.2"): sur runner arm64 son downloader tombe dans la
+        # branche "linux-arm64 build not available at v0.6.0" et tue le build
+        # image arm64 (vanilla run 42801218509, et la log montrait actions/
+        # checkout+cosign à 398d4b0e = la commit du tag). v3.9.2 = arm64-capable.
+        with:
+          cosign-release: v2.6.5
+          install-dir: /usr/local/bin
+          use-sudo: true
+
+      # aquasecurity/setup-trivy flakes on the arm64 runner (in-action release
+      # download with no retry, silent exit 1 — it killed two image runs on the
+      # same step): install the pinned trivy release directly, with curl
+      # retries, and prepend its dir to PATH for the later build step.
+      - name: Install trivy
+        run: |
+          case "$(uname -m)" in
+            x86_64) a=64bit ;;
+            aarch64) a=ARM64 ;;
+            *) echo "unsupported arch $(uname -m)" >&2; exit 1 ;;
+          esac
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL --retry 6 --retry-all-errors --retry-delay 5 \
+            "https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-$a.tar.gz" |
+            tar -xz -C "$HOME/.local/bin" trivy
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Content hash, build, lint, boot test, scan, push and signature of every
+      # image of the architecture. The results table goes to the job summary, the
+      # serial console of a failed boot test to the artifact below; the step fails
+      # when any image failed to build, pass its checks, boot, or be pushed.
+      - name: Build, test, push and sign the images
+        env:
+          ARCH: ${{ matrix.group.arch }}
+          ENTRIES: ${{ toJSON(matrix.group.entries) }}
+          GLOBAL_HASH: ${{ needs.discover.outputs.global_hash }}
+          FORCE_NO_CACHE: ${{ inputs.force_no_cache }}
+          BOOTC_GPG_SHA256: ${{ inputs.bootc_gpg_sha256 }}
+          APT_URL: ${{ inputs.apt_url }}
+          COSIGN_PUBLIC_KEY: ${{ secrets.COSIGN_PUBLIC_KEY }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: bash .ci-tooling/scripts/image-ci/build-arch.sh
+
+      # P-44/P-45: the build step carried COSIGN_PRIVATE_KEY/COSIGN_PASSWORD.
+      # Nothing may survive on the runner once the job is over — success or
+      # failure: the private key artifacts the run wrote to disk (cosign.key,
+      # signing_key.pem, *.key) are shredded and the only shell still observing
+      # the material at this point (this step's env copy) is unset. GitHub
+      # re-injects job variables into every new step, so earlier steps could
+      # not be drained post hoc; the final step closes the last one.
+      - name: Purge the signing material
+        if: always()
+        shell: bash
+        run: bash .ci-tooling/scripts/purge-signing-secrets.sh
+
+      - name: Upload the logs of the failed images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-logs-${{ matrix.group.arch }}
+          path: ${{ runner.temp }}/image-ci/failed-logs
+          if-no-files-found: ignore
+
+      # Persist the measured boot waits of this run for the next one — even
+      # when the run failed: a slow, aborted boot is still the freshest record.
+      - name: Save the boot-timeout calibration
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/image-ci/image-test/boot-calibration.env
+          key: boot-calib-${{ matrix.group.arch }}-${{ github.run_id }}
+
+  # Promote per-arch images into multi-arch manifest lists. Runs once every
+  # build-test-push job (one per architecture) is green.
+  # For each variant tag V (a `-4k` tag covers arm64 only), the manifest job
+  # creates :V -> :V_amd64 + :V_arm64, so `podman pull :latest` resolves to the
+  # right arch on each host. The canonical amd64 image was also pushed on :latest
+  # by build-test-push; this manifest job overwrites that single-arch tag with
+  # the manifest list (the amd64 entry points at the same image, so amd64 pulls
+  # are unchanged).
+  manifest:
+    name: Manifest lists ${{ matrix.entry.tag }}
+    needs: [discover, build-test-push]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJSON(needs.discover.outputs.manifest_matrix) }}
+    steps:
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          docker login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin <<< "${GHCR_TOKEN}"
+
+      - name: Create and push manifest lists
+        env:
+          CF_TAG: ${{ matrix.entry.tag }}
+          ARCHES: ${{ join(matrix.entry.arches, ' ') }}
+          TWIN: ${{ matrix.entry.twin || '' }}
+          PRIMARY: ${{ matrix.entry.primary || '' }}
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          IMAGE="${IMAGE,,}"
+          # The architectures this tag was built for: both for a regular tag,
+          # arm64 only for a `-4k` tag (a 4 KB arm64 kernel image has no amd64 twin).
+          read -r -a arches <<<"${ARCHES}"
+
+          # Create, annotate and push the manifest list over the per-arch tags
+          # <CF_TAG>_<arch> pushed by build-test-push.
+          list="${IMAGE}:${CF_TAG}"
+          refs=()
+          for arch in "${arches[@]}"; do
+            if [ -n "${TWIN}" ]; then
+              # Thin twin (owner GO 2026-11-03 12:50): the per-arch tags keep
+              # the owner spelling <primary>_<arch>-<twin>.
+              refs+=("${IMAGE}:${PRIMARY}_${arch}-${TWIN}")
+            else
+              refs+=("${IMAGE}:${CF_TAG}_${arch}")
+            fi
+          done
+          docker manifest create "${list}" "${refs[@]}"
+          for i in "${!refs[@]}"; do
+            # refs[i] parallels arches[i]; a `-4k` tag (arm64 only) has no
+            # index 1 — indexing by arm64's actual position keeps the
+            # annotation unbound-variable-safe under set -u.
+            if [ "${arches[$i]}" = "arm64" ]; then
+              docker manifest annotate --arch arm64 "${list}" "${refs[$i]}"
+            fi
+          done
+          docker manifest push "${list}"
+
+      # Sign the manifest list itself: its digest is the SHA-256 of the raw
+      # manifest bytes (not that of a per-arch entry).
+      - name: Resolve manifest list digests
+        id: lists
+        env:
+          CF_TAG: ${{ matrix.entry.tag }}
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          IMAGE="${IMAGE,,}"
+          tags=("${CF_TAG}")
+          {
+            echo "refs<<EOF"
+            for t in "${tags[@]}"; do
+              digest=$(skopeo inspect --raw "docker://${IMAGE}:${t}" \
+                | sha256sum | cut -d' ' -f1)
+              echo "${IMAGE}@sha256:${digest}"
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sign manifest lists
+        uses: DaemonCores/DaemonCores-CI/sign-image@main
+        with:
+          refs: ${{ steps.lists.outputs.refs }}
+          private-key: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          password: ${{ secrets.COSIGN_PASSWORD }}
+
+      # P-44/P-45 drain: the signing step above held COSIGN_PRIVATE_KEY and 
+      # COSIGN_PASSWORD as job variables (cosign reads them from its env, no
+      # artifact is written to disk). The final step unsets the only env copy
+      # still observable at job end.
+      - name: Purge the signing material
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset COSIGN_PRIVATE_KEY COSIGN_PASSWORD COSIGN_PUBLIC_KEY
