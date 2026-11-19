@@ -229,7 +229,7 @@ jobs:
       - name: Fetch the shared tooling
         uses: actions/checkout@v7
         with:
-          repository: DaemonCores/DaemonCores-CI
+          repository: EdwardWoodhub/DaemonCores-CI
           ref: main
           path: .ci-tooling
           persist-credentials: false
@@ -434,7 +434,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Sign manifest lists
-        uses: DaemonCores/DaemonCores-CI/sign-image@main
+        uses: EdwardWoodhub/DaemonCores-CI/sign-image@main
         with:
           refs: ${{ steps.lists.outputs.refs }}
           private-key: ${{ secrets.COSIGN_PRIVATE_KEY }}

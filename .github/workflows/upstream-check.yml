@@ -16,4 +16,4 @@ permissions:
 
 jobs:
   check:
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/upstream-check.yml@main
+    uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/upstream-check.yml@main

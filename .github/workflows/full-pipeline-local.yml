@@ -232,7 +232,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger the upstream base pipeline and wait
-        uses: DaemonCores/DaemonCores-CI/trigger-pipeline@main
+        uses: EdwardWoodhub/DaemonCores-CI/trigger-pipeline@main
         with:
           repo: ${{ inputs.base_repo }}
           workflow: pipeline.yml
@@ -329,7 +329,7 @@ jobs:
         if: ${{ steps.need.outputs.groups != '' }}
         uses: actions/checkout@v7
         with:
-          repository: DaemonCores/DaemonCores-CI
+          repository: EdwardWoodhub/DaemonCores-CI
           ref: main
           path: .ci-tooling
           persist-credentials: false
@@ -436,7 +436,7 @@ jobs:
         if: ${{ env.HAS_APT == 'true' }}
         uses: actions/checkout@v7
         with:
-          repository: DaemonCores/DaemonCores-CI
+          repository: EdwardWoodhub/DaemonCores-CI
           ref: main
           path: .ci-tooling
           persist-credentials: false
@@ -469,7 +469,7 @@ jobs:
     # Single-arch: the build-env image is the host toolchain (buildah on amd64);
     # it builds both amd64 and arm64 debs via the arch-aware waves below.
     if: ${{ !cancelled() && needs.prepare.outputs.env == 'true' }}
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-env.yml@main
+    uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/build-env.yml@main
     secrets: inherit
 
   debs_amd64:
@@ -558,7 +558,7 @@ jobs:
           name="${GITHUB_REPOSITORY##*/}"
           echo "name=${name,,}" >> "$GITHUB_OUTPUT"
       - id: end
-        uses: DaemonCores/DaemonCores-CI/bootc-debs-end@main
+        uses: EdwardWoodhub/DaemonCores-CI/bootc-debs-end@main
         with:
           repo_name: ${{ steps.repo.outputs.name }}
           apt_gpg_key: ${{ secrets.APT_GPG_KEY }}
@@ -621,7 +621,7 @@ jobs:
       (needs.debs_publish.result == 'success' || needs.debs_publish.result == 'skipped') &&
       (needs.image.result == 'success' || needs.image.result == 'skipped') &&
       needs.meta.result == 'success'
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/iso-builder.yml@main
+    uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/iso-builder.yml@main
     with:
       product_name: ${{ needs.meta.outputs.product_name }}
     secrets: inherit
@@ -659,7 +659,7 @@ jobs:
       (needs.base.result == 'success' || needs.base.result == 'skipped') &&
       (needs.image.result == 'success' || needs.image.result == 'skipped') &&
       needs.meta.result == 'success'
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/img-builder.yml@main
+    uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/img-builder.yml@main
     with:
       target: rpi
       arch: arm64
@@ -675,7 +675,7 @@ jobs:
       (needs.base.result == 'success' || needs.base.result == 'skipped') &&
       (needs.image.result == 'success' || needs.image.result == 'skipped') &&
       needs.meta.result == 'success'
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/img-builder.yml@main
+    uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/img-builder.yml@main
     with:
       target: gallium
       arch: arm64

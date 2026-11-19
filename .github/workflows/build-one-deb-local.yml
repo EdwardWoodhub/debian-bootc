@@ -79,7 +79,7 @@ jobs:
       # Target arch propagates to the build-deb action and to deb globbing.
       BUILD_ARCH: ${{ inputs.arch }}
     steps:
-      - uses: DaemonCores/DaemonCores-CI/bootc-debs-start@main
+      - uses: EdwardWoodhub/DaemonCores-CI/bootc-debs-start@main
 
       # Expand any `variants:` template into plain packages before the lookup
       # below. A variant-generated name (e.g. linux-modules-rpi3) does not exist
@@ -87,13 +87,13 @@ jobs:
       # package definition" would find nothing.
       - name: Expand manifest variants
         id: expand
-        uses: DaemonCores/DaemonCores-CI/manifest-expand@main
+        uses: EdwardWoodhub/DaemonCores-CI/manifest-expand@main
         with:
           manifest: ${{ inputs.manifest }}
 
       - name: Read package definition
         id: def
-        uses: DaemonCores/DaemonCores-CI/pkg-def@main
+        uses: EdwardWoodhub/DaemonCores-CI/pkg-def@main
         with:
           manifest: ${{ steps.expand.outputs.manifest }}
           package: ${{ inputs.package }}
@@ -220,7 +220,7 @@ jobs:
       # build, build-deb keeps the last-good published deb.
       - name: Track upstream releases
         id: track
-        uses: DaemonCores/DaemonCores-CI/upstream-track@main
+        uses: EdwardWoodhub/DaemonCores-CI/upstream-track@main
         with:
           package: ${{ inputs.package }}
           manifest: ${{ steps.expand.outputs.manifest }}
@@ -246,7 +246,7 @@ jobs:
 
       - name: Build ${{ inputs.package }}
         id: build
-        uses: DaemonCores/DaemonCores-CI/build-deb@main
+        uses: EdwardWoodhub/DaemonCores-CI/build-deb@main
         with:
           package: ${{ inputs.package }}
           upstream: ${{ steps.def.outputs.upstream }}

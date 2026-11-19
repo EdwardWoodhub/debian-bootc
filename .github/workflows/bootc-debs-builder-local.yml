@@ -66,7 +66,7 @@ jobs:
       - name: Checkout CI tooling
         uses: actions/checkout@v7
         with:
-          repository: DaemonCores/DaemonCores-CI
+          repository: EdwardWoodhub/DaemonCores-CI
           ref: main
           path: .ci-tooling
           persist-credentials: false
@@ -95,7 +95,7 @@ jobs:
       # packages, and there is a single place that knows about templates.
       - name: Expand manifest variants
         id: expand
-        uses: DaemonCores/DaemonCores-CI/manifest-expand@main
+        uses: EdwardWoodhub/DaemonCores-CI/manifest-expand@main
         with:
           arch: ${{ inputs.arch }}
           # One kernel per (arch, page size): nothing in the manifest carries
@@ -284,7 +284,7 @@ jobs:
           echo "name=${name,,}" >> "$GITHUB_OUTPUT"  # lowercase
 
       - id: end
-        uses: DaemonCores/DaemonCores-CI/bootc-debs-end@main
+        uses: EdwardWoodhub/DaemonCores-CI/bootc-debs-end@main
         with:
           repo_name: ${{ steps.repo.outputs.name }}
           apt_gpg_key: ${{ secrets.APT_GPG_KEY }}

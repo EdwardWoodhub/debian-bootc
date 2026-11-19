@@ -41,7 +41,7 @@ Each image is published once per tag, with automatic updates on by default (a sy
 
 ## Pipeline
 
-The repository's `pipeline.yml` is a thin caller for [`DaemonCores-CI`](https://github.com/DaemonCores/DaemonCores-CI):
+The repository's `pipeline.yml` is a thin caller for [`DaemonCores-CI`](https://github.com/EdwardWoodhub/DaemonCores-CI):
 
 1. build the package environment;
 2. build amd64 and arm64 Debian packages in dependency waves;

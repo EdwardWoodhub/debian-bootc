@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   lint:
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/lint.yml@main
+    uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/lint.yml@main
     # The shared default is the same set of targets; they stay explicit so a
     # manual dispatch and the automatic runs are literally one command.
     with:

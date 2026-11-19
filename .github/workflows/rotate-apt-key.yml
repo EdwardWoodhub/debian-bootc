@@ -20,5 +20,5 @@ concurrency:
 
 jobs:
   rotate:
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/rotate-apt-key.yml@main
+    uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/rotate-apt-key.yml@main
     secrets: inherit
