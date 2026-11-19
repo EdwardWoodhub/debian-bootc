@@ -192,7 +192,7 @@ jobs:
       fail-fast: false
       matrix:
         package: ${{ fromJSON(needs.setup.outputs.wave0) }}
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-one-deb.yml@main
+    uses: ./.github/workflows/build-one-deb-local.yml
     with:
       package: ${{ matrix.package }}
       container_image: ${{ needs.setup.outputs.env_image }}
@@ -212,7 +212,7 @@ jobs:
       fail-fast: false
       matrix:
         package: ${{ fromJSON(needs.setup.outputs.wave1) }}
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-one-deb.yml@main
+    uses: ./.github/workflows/build-one-deb-local.yml
     with:
       package: ${{ matrix.package }}
       container_image: ${{ needs.setup.outputs.env_image }}
@@ -234,7 +234,7 @@ jobs:
       fail-fast: false
       matrix:
         package: ${{ fromJSON(needs.setup.outputs.wave2) }}
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-one-deb.yml@main
+    uses: ./.github/workflows/build-one-deb-local.yml
     with:
       package: ${{ matrix.package }}
       container_image: ${{ needs.setup.outputs.env_image }}
@@ -254,7 +254,7 @@ jobs:
       fail-fast: false
       matrix:
         package: ${{ fromJSON(needs.setup.outputs.wave3) }}
-    uses: DaemonCores/DaemonCores-CI/.github/workflows/build-one-deb.yml@main
+    uses: ./.github/workflows/build-one-deb-local.yml
     with:
       package: ${{ matrix.package }}
       container_image: ${{ needs.setup.outputs.env_image }}
