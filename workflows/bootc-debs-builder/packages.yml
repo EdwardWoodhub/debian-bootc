@@ -481,7 +481,7 @@ packages:
       if test -n "${HEADERS_DEB}"; then
         HDR_VER=$(dpkg-deb -f "${HEADERS_DEB}" Version)
         HDR_RPKG=$(dpkg-deb -f "${HEADERS_DEB}" Package | sed 's/^linux-headers-//')
-        HDR_RPKG="linux-headers-\${KERNEL_PROFILE}${KERNEL_SUFFIX:-}-${HDR_RPKG}"
+        HDR_RPKG="linux-headers-${KERNEL_PROFILE}${KERNEL_SUFFIX:-}-${HDR_RPKG}"
         HREPACK=/tmp/linux-headers-repack
         rm -rf "${HREPACK}"
         dpkg-deb -R "${HEADERS_DEB}" "${HREPACK}"

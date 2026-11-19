@@ -197,8 +197,8 @@ jobs:
                 #   kernel-src/kconfig/{cpus,pages}   -> flavour fragments (both rebuilt)
                 # Only trigger a format whose deps actually changed; never
                 # cascade between img formats.
-                match '^Containerfile$' && { img_rpi=true; img_gallium=true; } || true
-                match '^workflows/bootc-debs-builder/packages\.yml$' && { img_rpi=true; img_gallium=true; } || true
+                # disabled img_rpi/img_gallium auto-trigger
+                # disabled packages.yml img trigger
                 match '^workflows/bootc-debs-builder/kernel-src/modules/embeded/(rpi|rk3588)' && img_rpi=true || true
               fi ;;
           esac
@@ -614,13 +614,7 @@ jobs:
     # the amd64 image; arm64 image is awaited via the shared `image` job to keep
     # the pipeline a single wave. arm64 ISO support is pending a Fedora arm64
     # netinstall source and a kickstart variant.
-    if: |
-      !cancelled() &&
-      needs.prepare.outputs.iso == 'true' &&
-      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
-      (needs.debs_publish.result == 'success' || needs.debs_publish.result == 'skipped') &&
-      (needs.image.result == 'success' || needs.image.result == 'skipped') &&
-      needs.meta.result == 'success'
+    if: false
     uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/iso-builder.yml@main
     with:
       product_name: ${{ needs.meta.outputs.product_name }}
@@ -653,12 +647,7 @@ jobs:
   img_rpi:
     name: Build rpi .img (arm64)
     needs: [prepare, image, meta, base]
-    if: |
-      !cancelled() &&
-      needs.prepare.outputs.img_rpi == 'true' &&
-      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
-      (needs.image.result == 'success' || needs.image.result == 'skipped') &&
-      needs.meta.result == 'success'
+    if: false
     uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/img-builder.yml@main
     with:
       target: rpi
@@ -669,12 +658,7 @@ jobs:
   img_gallium:
     name: Build gallium .img (arm64)
     needs: [prepare, image, meta, base]
-    if: |
-      !cancelled() &&
-      needs.prepare.outputs.img_gallium == 'true' &&
-      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
-      (needs.image.result == 'success' || needs.image.result == 'skipped') &&
-      needs.meta.result == 'success'
+    if: false
     uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/img-builder.yml@main
     with:
       target: gallium
