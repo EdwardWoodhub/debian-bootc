@@ -265,7 +265,7 @@ RUN apt update \
         for _d in ${ARM_DEVICES}; do set -- "$@" "linux-modules-${_d}"; done; \
     fi \
     && case "${_arch}" in \
-        amd64) _flavour=${KERNEL_FLAVOUR:-x64v1} ;; \
+        amd64) _flavour=${KERNEL_FLAVOUR:-x64v3} ;; \
         arm64) case "${KERNEL_SUFFIX}" in \
             -16k*) _flavour=${KERNEL_FLAVOUR:-armv8.2-lse} ;; \
             '') _flavour=${KERNEL_FLAVOUR:-armv8.0} ;; \

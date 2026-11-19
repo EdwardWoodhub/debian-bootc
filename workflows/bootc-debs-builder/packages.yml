@@ -139,14 +139,14 @@ packages:
       SB_SIGNING_CERT: SB_SIGNING_CERT
     variants:
       # ---- IA profile: the AI compute kernel (DC off, THP always) --------
-      "ia-x64v1":
-        when: {arch: amd64}
-        deb-glob: "linux-image-common-ia-x64v1_* linux-headers-ia-*"
-        env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v1, KERNEL_SUFFIX: "-ia-x64v1"}
-#       "ia-x64v2":
+#       "ia-x64v1":
 #         when: {arch: amd64}
-#         deb-glob: "linux-image-common-ia-x64v2_* linux-headers-ia-*"
-#         env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v2, KERNEL_SUFFIX: "-ia-x64v2"}
+#         deb-glob: "linux-image-common-ia-x64v1_* linux-headers-ia-*"
+#         env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v1, KERNEL_SUFFIX: "-ia-x64v1"}
+# #       "ia-x64v2":
+# #         when: {arch: amd64}
+# #         deb-glob: "linux-image-common-ia-x64v2_* linux-headers-ia-*"
+# #         env: {KERNEL_PROFILE: ia, KERNEL_ARCH_LEVEL: x64v2, KERNEL_SUFFIX: "-ia-x64v2"}
       "ia-x64v3":
         when: {arch: amd64}
         deb-glob: "linux-image-common-ia-x64v3_* linux-headers-ia-*"
@@ -170,22 +170,22 @@ packages:
       # ---- VM profile: the PVE-host kernel (NO gpu overlay — VM ≠ GPU,
       # owner 05/11 15:1x; the profile delta = the THP NEVER fragment +
       # the hypervisor opts folded in the base config) --------------------
-      "vm-x64v1":
-        when: {arch: amd64}
-        deb-glob: "linux-image-common-vm-x64v1_* linux-headers-vm-*"
-        env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v1, KERNEL_SUFFIX: "-vm-x64v1"}
-#       "vm-x64v2":
+#       "vm-x64v1":
 #         when: {arch: amd64}
-#         deb-glob: "linux-image-common-vm-x64v2_* linux-headers-vm-*"
-#         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v2, KERNEL_SUFFIX: "-vm-x64v2"}
-      "vm-x64v3":
-        when: {arch: amd64}
-        deb-glob: "linux-image-common-vm-x64v3_* linux-headers-vm-*"
-        env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v3, KERNEL_SUFFIX: "-vm-x64v3"}
-#       "vm-x64v4":
+#         deb-glob: "linux-image-common-vm-x64v1_* linux-headers-vm-*"
+#         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v1, KERNEL_SUFFIX: "-vm-x64v1"}
+# #       "vm-x64v2":
+# #         when: {arch: amd64}
+# #         deb-glob: "linux-image-common-vm-x64v2_* linux-headers-vm-*"
+# #         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v2, KERNEL_SUFFIX: "-vm-x64v2"}
+#       "vm-x64v3":
 #         when: {arch: amd64}
-#         deb-glob: "linux-image-common-vm-x64v4_* linux-headers-vm-*"
-#         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v4, KERNEL_SUFFIX: "-vm-x64v4"}
+#         deb-glob: "linux-image-common-vm-x64v3_* linux-headers-vm-*"
+#         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v3, KERNEL_SUFFIX: "-vm-x64v3"}
+# #       "vm-x64v4":
+# #         when: {arch: amd64}
+# #         deb-glob: "linux-image-common-vm-x64v4_* linux-headers-vm-*"
+# #         env: {KERNEL_PROFILE: vm, KERNEL_ARCH_LEVEL: x64v4, KERNEL_SUFFIX: "-vm-x64v4"}
       "vm-armv8.0":
         when: {arch: arm64}
         deb-glob: "linux-image-common-vm-armv8.0_* linux-headers-vm-*"
@@ -757,16 +757,16 @@ packages:
   # proofed; a VM-profile host carries no gpu set (VM != GPU, jamais eu).
   - name: linux-modules-gpu
     variants:
-      ia-x64v1:
-        when: {arch: amd64}
-        deps:
-          - linux-image-ia-x64v1
-        env: {GPU_SET: ia, GPU_FLAV: x64v1, SEED_SUFFIX: "-ia-x64v1"}
-#       ia-x64v2:
+#       ia-x64v1:
 #         when: {arch: amd64}
 #         deps:
-#           - linux-image-ia-x64v2
-#         env: {GPU_SET: ia, GPU_FLAV: x64v2, SEED_SUFFIX: "-ia-x64v2"}
+#           - linux-image-ia-x64v1
+#         env: {GPU_SET: ia, GPU_FLAV: x64v1, SEED_SUFFIX: "-ia-x64v1"}
+# #       ia-x64v2:
+# #         when: {arch: amd64}
+# #         deps:
+# #           - linux-image-ia-x64v2
+# #         env: {GPU_SET: ia, GPU_FLAV: x64v2, SEED_SUFFIX: "-ia-x64v2"}
       ia-x64v3:
         when: {arch: amd64}
         deps:
@@ -781,43 +781,43 @@ packages:
 #       # 09/11: the ARM64 GPU SETS ARE GONE — no dGPU exists on ARM, the
 #       # arm64 lane builds NO gpu deb at all (the rpi/rk/mt8183 device
 #       # modules stay); the loader variants amd64 only — no ARM NVIDIA).
-      gaming-x64v1:
-        when: {arch: amd64}
-        deps:
-          - linux-image-ia-x64v1
-        env: {GPU_SET: gaming, GPU_FLAV: x64v1, SEED_SUFFIX: "-ia-x64v1"}
-#       gaming-x64v2:
+#       gaming-x64v1:
 #         when: {arch: amd64}
 #         deps:
-#           - linux-image-ia-x64v2
-#         env: {GPU_SET: gaming, GPU_FLAV: x64v2, SEED_SUFFIX: "-ia-x64v2"}
-      gaming-x64v3:
-        when: {arch: amd64}
-        deps:
-          - linux-image-ia-x64v3
-        env: {GPU_SET: gaming, GPU_FLAV: x64v3, SEED_SUFFIX: "-ia-x64v3"}
-#       gaming-x64v4:
+#           - linux-image-ia-x64v1
+#         env: {GPU_SET: gaming, GPU_FLAV: x64v1, SEED_SUFFIX: "-ia-x64v1"}
+# #       gaming-x64v2:
+# #         when: {arch: amd64}
+# #         deps:
+# #           - linux-image-ia-x64v2
+# #         env: {GPU_SET: gaming, GPU_FLAV: x64v2, SEED_SUFFIX: "-ia-x64v2"}
+#       gaming-x64v3:
 #         when: {arch: amd64}
 #         deps:
-#           - linux-image-ia-x64v4
-#         env: {GPU_SET: gaming, GPU_FLAV: x64v4, SEED_SUFFIX: "-ia-x64v4"}
-#       # NVIDIA variants: the loader policy only, AMD64 ONLY (owner 19:3x(b):
-#       # no ARM NVIDIA — the arm64 flavours never had one). They depend on
-#       # their sibling FUSED merged set of the same flavour and profile
-#       # binding, and on the same profile kernel the stack is pinned to: the
-#       # open NVIDIA modules ride INSIDE the sibling deb.
-      ia-nvidia-x64v1:
-        when: {arch: amd64}
-        deps:
-          - linux-image-ia-x64v1
-          - gpu-ia-x64v1
-        env: {GPU_SET: ia, GPU_FLAV: x64v1, GPU_NVIDIA: "yes"}
-#       ia-nvidia-x64v2:
+#           - linux-image-ia-x64v3
+#         env: {GPU_SET: gaming, GPU_FLAV: x64v3, SEED_SUFFIX: "-ia-x64v3"}
+# #       gaming-x64v4:
+# #         when: {arch: amd64}
+# #         deps:
+# #           - linux-image-ia-x64v4
+# #         env: {GPU_SET: gaming, GPU_FLAV: x64v4, SEED_SUFFIX: "-ia-x64v4"}
+# #       # NVIDIA variants: the loader policy only, AMD64 ONLY (owner 19:3x(b):
+# #       # no ARM NVIDIA — the arm64 flavours never had one). They depend on
+# #       # their sibling FUSED merged set of the same flavour and profile
+# #       # binding, and on the same profile kernel the stack is pinned to: the
+# #       # open NVIDIA modules ride INSIDE the sibling deb.
+#       ia-nvidia-x64v1:
 #         when: {arch: amd64}
 #         deps:
-#           - linux-image-ia-x64v2
-#           - gpu-ia-x64v2
-#         env: {GPU_SET: ia, GPU_FLAV: x64v2, GPU_NVIDIA: "yes"}
+#           - linux-image-ia-x64v1
+#           - gpu-ia-x64v1
+#         env: {GPU_SET: ia, GPU_FLAV: x64v1, GPU_NVIDIA: "yes"}
+# #       ia-nvidia-x64v2:
+# #         when: {arch: amd64}
+# #         deps:
+# #           - linux-image-ia-x64v2
+# #           - gpu-ia-x64v2
+# #         env: {GPU_SET: ia, GPU_FLAV: x64v2, GPU_NVIDIA: "yes"}
       ia-nvidia-x64v3:
         when: {arch: amd64}
         deps:
@@ -830,30 +830,30 @@ packages:
 #           - linux-image-ia-x64v4
 #           - gpu-ia-x64v4
 #         env: {GPU_SET: ia, GPU_FLAV: x64v4, GPU_NVIDIA: "yes"}
-      gaming-nvidia-x64v1:
-        when: {arch: amd64}
-        deps:
-          - linux-image-ia-x64v1
-          - gpu-gaming-x64v1
-        env: {GPU_SET: gaming, GPU_FLAV: x64v1, GPU_NVIDIA: "yes"}
-#       gaming-nvidia-x64v2:
+#       gaming-nvidia-x64v1:
 #         when: {arch: amd64}
 #         deps:
-#           - linux-image-ia-x64v2
-#           - gpu-gaming-x64v2
-#         env: {GPU_SET: gaming, GPU_FLAV: x64v2, GPU_NVIDIA: "yes"}
-      gaming-nvidia-x64v3:
-        when: {arch: amd64}
-        deps:
-          - linux-image-ia-x64v3
-          - gpu-gaming-x64v3
-        env: {GPU_SET: gaming, GPU_FLAV: x64v3, GPU_NVIDIA: "yes"}
-#       gaming-nvidia-x64v4:
+#           - linux-image-ia-x64v1
+#           - gpu-gaming-x64v1
+#         env: {GPU_SET: gaming, GPU_FLAV: x64v1, GPU_NVIDIA: "yes"}
+# #       gaming-nvidia-x64v2:
+# #         when: {arch: amd64}
+# #         deps:
+# #           - linux-image-ia-x64v2
+# #           - gpu-gaming-x64v2
+# #         env: {GPU_SET: gaming, GPU_FLAV: x64v2, GPU_NVIDIA: "yes"}
+#       gaming-nvidia-x64v3:
 #         when: {arch: amd64}
 #         deps:
-#           - linux-image-ia-x64v4
-#           - gpu-gaming-x64v4
-#         env: {GPU_SET: gaming, GPU_FLAV: x64v4, GPU_NVIDIA: "yes"}
+#           - linux-image-ia-x64v3
+#           - gpu-gaming-x64v3
+#         env: {GPU_SET: gaming, GPU_FLAV: x64v3, GPU_NVIDIA: "yes"}
+# #       gaming-nvidia-x64v4:
+# #         when: {arch: amd64}
+# #         deps:
+# #           - linux-image-ia-x64v4
+# #           - gpu-gaming-x64v4
+# #         env: {GPU_SET: gaming, GPU_FLAV: x64v4, GPU_NVIDIA: "yes"}
     variant-name-prefix: "gpu-"
     variant-env: GPU_VARIANT
     # The output debs are named after the EXPANDED variant key (gpu-<set>
@@ -1245,24 +1245,24 @@ packages:
     # variants are installed side by side; ld.so picks the level per CPU through
     # glibc-hwcaps directories, no boot-time switch (x64v1 = baseline).
     variants:
-      gaming-x64v1:
-        when: {arch: amd64}
-        env: {GPU_PROFILE: gaming, GPU_LEVEL: x64v1}
-#       gaming-x64v2:
+#       gaming-x64v1:
 #         when: {arch: amd64}
-#         env: {GPU_PROFILE: gaming, GPU_LEVEL: x64v2}
-      gaming-x64v3:
-        when: {arch: amd64}
-        env: {GPU_PROFILE: gaming, GPU_LEVEL: x64v3}
-#       gaming-x64v4:
+#         env: {GPU_PROFILE: gaming, GPU_LEVEL: x64v1}
+# #       gaming-x64v2:
+# #         when: {arch: amd64}
+# #         env: {GPU_PROFILE: gaming, GPU_LEVEL: x64v2}
+#       gaming-x64v3:
 #         when: {arch: amd64}
-#         env: {GPU_PROFILE: gaming, GPU_LEVEL: x64v4}
-      ia-x64v1:
-        when: {arch: amd64}
-        env: {GPU_PROFILE: ia, GPU_LEVEL: x64v1}
-#       ia-x64v2:
+#         env: {GPU_PROFILE: gaming, GPU_LEVEL: x64v3}
+# #       gaming-x64v4:
+# #         when: {arch: amd64}
+# #         env: {GPU_PROFILE: gaming, GPU_LEVEL: x64v4}
+#       ia-x64v1:
 #         when: {arch: amd64}
-#         env: {GPU_PROFILE: ia, GPU_LEVEL: x64v2}
+#         env: {GPU_PROFILE: ia, GPU_LEVEL: x64v1}
+# #       ia-x64v2:
+# #         when: {arch: amd64}
+# #         env: {GPU_PROFILE: ia, GPU_LEVEL: x64v2}
       ia-x64v3:
         when: {arch: amd64}
         env: {GPU_PROFILE: ia, GPU_LEVEL: x64v3}
@@ -1280,7 +1280,7 @@ packages:
       SAVE_PWD=$(pwd)
       DEB_ARCH=$(dpkg --print-architecture)
       PKG="gpu-userspace-${GPU_PROFILE}-${GPU_LEVEL}"
-      BASE_PKG="gpu-userspace-${GPU_PROFILE}-x64v1"
+      BASE_PKG="gpu-userspace-${GPU_PROFILE}-x64v3"
       PREFIX="/usr/lib/dc-gpu/${GPU_PROFILE}"
       SHARE="/usr/share/dc-gpu/${GPU_PROFILE}"
       STAGE="/output/${PKG}-stage"
