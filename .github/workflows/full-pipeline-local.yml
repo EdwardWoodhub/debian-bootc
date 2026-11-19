@@ -539,7 +539,7 @@ jobs:
       always() && !cancelled() &&
       needs.prepare.outputs.debs == 'true' &&
       (needs.debs_amd64.result == 'success' || needs.debs_amd64.result == 'failure') &&
-      (needs.debs_arm64.result == 'success' || needs.debs_arm64.result == 'failure')
+      (needs.debs_arm64.result == 'success' || needs.debs_arm64.result == 'failure' || needs.debs_arm64.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       # actions: write: the bootc-debs-end composite drops the stale
