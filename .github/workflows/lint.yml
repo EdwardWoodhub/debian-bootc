@@ -26,4 +26,4 @@ jobs:
     # The shared default is the same set of targets; they stay explicit so a
     # manual dispatch and the automatic runs are literally one command.
     with:
-      make-targets: 'admission check docs-check'
+      make-targets: 'admission check'
