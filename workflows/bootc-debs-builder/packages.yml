@@ -1618,6 +1618,7 @@ packages:
       SB_SIGNING_CERT: SB_SIGNING_CERT
     build: |
       set -euo pipefail
+      git config --global url."https://github.com/coreutils/gnulib.git".insteadOf "https://git.savannah.gnu.org/git/gnulib.git"
       SAVE_PWD=$(pwd)
       ARCH=$(dpkg --print-architecture)
       trap 'rm -f /tmp/sb.key /tmp/sb.crt' EXIT
