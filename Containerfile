@@ -152,7 +152,7 @@ RUN apt update \
     && apt download bootupd \
     && dpkg --unpack bootupd_*.deb \
     && rm -f bootupd_*.deb \
-    && sed -i 's|bootupctl backend set-default-bootloader grub|python3 -c "import json,pathlib; p=pathlib.Path(\"/usr/lib/bootupd/updates/metadata.json\"); d=json.loads(p.read_text()); v=d.get(\"versions\",{}); v.setdefault(\"grub\", v[\"grub2\"]) if \"grub2\" in v else None; p.write_text(json.dumps(d))"\n    bootupctl backend set-default-bootloader grub|' /var/lib/dpkg/info/bootupd.postinst \
+    && perl -i -pe 's|bootupctl backend set-default-bootloader grub|python3 -c "import json,pathlib; p=pathlib.Path(chr(47)+chr(117)+chr(115)+chr(114)+chr(47)+chr(108)+chr(105)+chr(98)+chr(47)+chr(98)+chr(111)+chr(111)+chr(116)+chr(117)+chr(112)+chr(100)+chr(47)+chr(117)+chr(112)+chr(100)+chr(97)+chr(116)+chr(101)+chr(115)+chr(47)+chr(109)+chr(101)+chr(116)+chr(97)+chr(100)+chr(97)+chr(116)+chr(97)+chr(46)+chr(106)+chr(115)+chr(111)+chr(110)); d=json.loads(p.read_text()); v=d.get(chr(118)+chr(101)+chr(114)+chr(115)+chr(105)+chr(111)+chr(110)+chr(115),{}); v.setdefault(chr(103)+chr(114)+chr(117)+chr(98), v[chr(103)+chr(114)+chr(117)+chr(98)+chr(50)]) if chr(103)+chr(114)+chr(117)+chr(98)+chr(50) in v else None; p.write_text(json.dumps(d))"\n    bootupctl backend set-default-bootloader grub|' /var/lib/dpkg/info/bootupd.postinst \
     && dpkg --configure bootupd \
     && if [ "${ARCH}" = arm64 ]; then \
         # The apt lists are wiped after every dpkg run (the 99-apt-clean
