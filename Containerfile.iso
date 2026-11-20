@@ -1,0 +1,202 @@
+#####################################################################################
+# Containerfile.iso — DaemonCores graphical installer live image
+#
+# Derives FROM the official debian-bootc base image to produce a live installer.
+# bootc-image-builder converts this image to an ISO (dracut live squashfs).
+#
+# The live environment IS the base image + a thin installer layer on top:
+#   - cage (single-app Wayland compositor, no full DE needed)
+#   - fisherman .deb (Go bootc install backend)
+#   - bootc-installer .deb (GTK4/Adwaita wizard frontend)
+#   - Mesa software renderer (llvmpipe) for display without specific GPU driver
+#   - live user with autologin on tty1 → cage → bootc-installer
+#   - polkit rule: live user runs fisherman via pkexec without password prompt
+#   - DaemonCores recipe.json (image catalog for bootc-installer)
+#
+# bootc-image-builder is invoked with --installer-payload-ref pointing to
+# the clean base image (no installer layer), so the payload installed on disk
+# is the base image only.
+#
+# No bootc-finalize here: the base image already ran it (kernel in
+# /usr/lib/modules, initramfs present, ostree filesystem layout done).
+#####################################################################################
+
+ARG ARCH=amd64
+# Derives directly from the base image — no duplication. CI passes the image
+# built (or published) for this architecture; the default covers manual and
+# local builds.
+# The base already carries: kernel, firmware, bootc, systemd, ostree migration,
+# initramfs (bootc-finalize), APT sources, GPG key, /sysroot.
+ARG BASE_IMAGE=ghcr.io/edwardwoodhub/my-debian-bootc:latest_${ARCH}
+FROM ${BASE_IMAGE}
+ARG ARCH=amd64
+ARG BASE_IMAGE
+# Container registry hosting the install-target images.  CI overrides this to
+# ghcr.io/${GITHUB_REPOSITORY,,}; the default covers manual / local builds.
+ARG IMAGE_REGISTRY="ghcr.io/edwardwoodhub/my-debian-bootc"
+
+LABEL org.opencontainers.image.title="DaemonCores Installer"
+LABEL org.opencontainers.image.description="Graphical bootc installer live image (bootc-installer + fisherman)"
+LABEL org.opencontainers.image.base.name="${BASE_IMAGE}"
+LABEL org.opencontainers.image.source="https://github.com/DaemonCores/debian-bootc"
+LABEL org.opencontainers.image.licenses="LGPL-2.1"
+LABEL containers.bootc=1
+LABEL ostree.bootable=1
+
+ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+
+# -----------------------------------------------------------------------------
+# Phase 1: Graphical installer stack
+# fisherman + bootc-installer are installed from our APT repo.
+# cage: minimal single-app Wayland compositor (no full DE required).
+# Mesa llvmpipe: software renderer — works on any GPU without specific drivers.
+# Fonts: minimal set for GTK4 rendering.
+# Network deps: libnm / NM for the bootc-installer network configuration page.
+# -----------------------------------------------------------------------------
+# Only the policy-rc.d guard is needed while apt runs; the whole overlay (which
+# carries the recipe generator) is copied after it so editing either leaves the
+# cached installer-stack install alone.
+COPY ./src/buildisopreinstall/sbin /sbin
+RUN apt update \
+    && apt install -y --no-install-recommends \
+        fisherman \
+        git \
+        curl \
+        bootc-installer \
+        cage \
+        libgl1-mesa-dri \
+        libdrm2 \
+        fonts-dejavu-core \
+        fonts-noto-core \
+        network-manager \
+        libnm0 \
+        gir1.2-nm-1.0 \
+        libgnome-desktop-4-2t64 \
+        gir1.2-gnomedesktop-4.0 \
+        libgweather-4-0t64 \
+        gir1.2-gweather-4.0 \
+        xdg-utils \
+        adwaita-icon-theme \
+        mokutil \
+        openssl \
+        pciutils \
+        selinux-policy-default \
+        python3-mako \
+        squashfs-tools \
+        xorriso \
+        isomd5sum
+
+# Placed after the apt layer: editing a Containerfile* or the generator must not
+# invalidate the cached installer-stack install.
+# The overlay brings the recipe generator (shipped only until the RUN below
+# removes it); the Containerfile list lets it scan which variants the CI is
+# programmed to build.
+COPY ./src/buildisopreinstall /
+COPY Containerfile* /tmp/recipe-gen/
+# Regenerate /etc/bootc-installer/recipe.json from available Containerfiles so
+# adding a new variant automatically appears in the installer without manual edits.
+RUN IMAGE_REGISTRY="${IMAGE_REGISTRY}" \
+    ARCH="${ARCH}" \
+    python3 /usr/libexec/debian-bootc/gen-recipe.py \
+        /tmp/recipe-gen \
+        /etc/bootc-installer/recipe.json \
+    && rm -rf /tmp/recipe-gen /usr/libexec/debian-bootc/gen-recipe.py
+
+# apt2ostree (owner 2026-11-04: the dependency of the NVIDIA install flow):
+# fetched from its upstream repository at LIVE-BUILD and shipped in the live
+# environment for the install-time derive; never hosted or redistributed by
+# us (a live clone of the audited pin, no upstream licence is touched).
+RUN [ -d /usr/lib/apt2ostree ] \
+    || /usr/libexec/debian-bootc/apt2ostree-fetch /usr/lib/apt2ostree
+
+# Live dracut modules (2026-11-11, the initrd-switch-root live ISO regression):
+# the bootc-image-builder ISO pipeline requires dmsquash-live + livenet +
+# ostree dracut modules in this tree (upstream HasModules check) and
+# --add's them when it rebuilds the live initramfs. Debian's dracut ships
+# NO live modules at all (modules.d has no 90dmsquash-live / 90livenet),
+# so the rebuilt live initramfs had no way to mount the /LiveOS squashfs
+# root: the boot reached initrd.target, then initrd-switch-root.service
+# failed in a dracut emergency loop. The modules are vendored here from
+# the upstream pin (dracut-ng 106, the same major version as the Debian
+# dracut 106 in this tree), sha256-pinned, never redistributed by us.
+# livenet/url-lib will be skipped by dracut if their network dependency
+# is unmet in the tree (no network module on Debian) - harmless offline:
+# only dmsquash-live mounts the CD root (dm/rootfs-block/img-lib/
+# overlayfs: img-lib also vendored below).
+RUN mkdir -p /usr/lib/debian-bootc/upstream \
+    && curl -sSL --retry 6 --retry-all-errors --retry-delay 5 -o /tmp/dracut-ng.tar.gz \
+        https://github.com/dracut-ng/dracut-ng/archive/refs/tags/106.tar.gz \
+    && echo "29dafe990036ebbfee996208ff4445fcbd60fef625b430a2f966d099d5c07583  /tmp/dracut-ng.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/dracut-ng.tar.gz -C /usr/lib/debian-bootc/upstream \
+    && for m in 90dmsquash-live 90livenet 45url-lib 99img-lib 45net-lib; do \
+         cp -a "/usr/lib/debian-bootc/upstream/dracut-106/modules.d/${m}" /usr/lib/dracut/modules.d/ ; \
+       done \
+    && rm -rf /usr/lib/debian-bootc/upstream /tmp/dracut-ng.tar.gz \
+    && for d in 90dmsquash-live 90livenet; do \
+         test -d "/usr/lib/dracut/modules.d/${d}" \
+           || { echo "ERROR: live dracut module ${d} missing" >&2; exit 1; }; \
+       done
+
+# -----------------------------------------------------------------------------
+# Phase 1.5: osbuild stage prerequisites on the deployed tree
+#
+# (1) org.osbuild.selinux reads etc/selinux/targeted/contexts/files/
+#     file_contexts from the deployed installer-image tree. Debian ships the
+#     reference policy as SELINUXTYPE=default (strict and targeted variants
+#     combined, file_contexts prebuilt in the package), and there is no
+#     selinux-policy-targeted in Debian since the policy was renamed — so the
+#     default policy is exposed under the targeted name the stages expect.
+# (2) org.osbuild.grub2.iso copies /boot/efi/EFI/<vendor>/{shim,mm,gcd}<tok>.efi
+#     out of the same tree. Debian stages nothing under /boot/efi inside a
+#     container (no ESP), so the trio is taken from the grub-efi-*-signed deb
+#     (staged at /usr/lib/debian-bootc/iso-efi/<version>) — shim, the MokManager and the
+#     grub core are all signed with the project Secure Boot key there.
+# The symlink is relative within /etc so the installed target resolves it the
+# same way; file_contexts itself is never regenerated here, it ships in the
+# policy package.
+# -----------------------------------------------------------------------------
+RUN ln -s default /etc/selinux/targeted \
+    && test -f /etc/selinux/targeted/contexts/files/file_contexts \
+    || { echo "ERROR: no file_contexts under the targeted name" >&2; exit 1; }
+
+RUN _arch=$(dpkg --print-architecture) \
+    && case "${_arch}" in \
+         amd64) _tok=x64 ;; \
+         arm64) _tok=aa64 ;; \
+         *) echo "ERROR: no ISO EFI triplet for ${_arch}" >&2; exit 1 ;; \
+       esac \
+    && _iso=$(ls -d /usr/lib/debian-bootc/iso-efi/*/EFI/debian | sort -V | tail -1) \
+    && for _f in shim${_tok}.efi mm${_tok}.efi gcd${_tok}.efi; do \
+         test -f "${_iso}/${_f}" \
+           || { echo "ERROR: iso-efi missing ${_iso}/${_f}" >&2; exit 1; }; \
+       done \
+    && test -f /usr/share/grub/unicode.pf2 \
+    && mkdir -p /boot/efi/EFI/debian \
+    && cp -a "${_iso}"/shim${_tok}.efi "${_iso}"/mm${_tok}.efi "${_iso}"/gcd${_tok}.efi \
+         /boot/efi/EFI/debian/
+
+# -----------------------------------------------------------------------------
+# Phase 2: Live user config, autologin, polkit rule, image catalog
+# src/buildisopreinstall/ mirrors the target filesystem layout, copied to /.
+# Contains: .bash_profile, getty override, polkit rule, recipe.json,
+#           podman containers.conf + storage.conf (cgroupfs/fuse-overlayfs).
+# -----------------------------------------------------------------------------
+RUN useradd \
+        --uid 1000 \
+        --no-create-home \
+        --home-dir /var/home/live \
+        --shell /bin/bash \
+        --comment "Live installer user" \
+        live \
+    && passwd -d live \
+    && usermod -aG video,render,input,plugdev live \
+    && chown -R live:live /var/home/live \
+    && rm -rf \
+        /tmp/* \
+        /var/tmp/* \
+        /run/* \
+        /usr/sbin/policy-rc.d
+
+# bootc images are updated in-place via ostree; no runtime healthcheck applies.
+HEALTHCHECK NONE
