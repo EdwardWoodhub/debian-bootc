@@ -124,7 +124,6 @@ RUN apt update \
         isc-dhcp-client \
         wpasupplicant \
         ${BOOT_PKG} \
-        $([ "${ARCH}" = "amd64" ] && echo grub-pc-bin) \
         firmware-ath9k-htc \
         firmware-carl9170 \
         firmware-mediatek \
@@ -134,7 +133,8 @@ RUN apt update \
         apt install -y --no-install-recommends \
             firmware-intel-graphics \
             firmware-intel-misc \
-            firmware-nvidia-graphics; \
+            firmware-nvidia-graphics \
+            grub-pc-bin; \
     else \
         apt install -y --no-install-recommends \
             efibootmgr \
