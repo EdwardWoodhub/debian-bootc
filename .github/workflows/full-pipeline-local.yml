@@ -622,7 +622,13 @@ jobs:
     # the amd64 image; arm64 image is awaited via the shared `image` job to keep
     # the pipeline a single wave. arm64 ISO support is pending a Fedora arm64
     # netinstall source and a kickstart variant.
-    if: false
+    if: |
+      !cancelled() &&
+      (needs.prepare.outputs.iso == 'true' || needs.image.result == 'success') &&
+      (needs.base.result == 'success' || needs.base.result == 'skipped') &&
+      (needs.debs_publish.result == 'success' || needs.debs_publish.result == 'skipped') &&
+      (needs.image.result == 'success' || needs.image.result == 'skipped') &&
+      needs.meta.result == 'success'
     uses: EdwardWoodhub/DaemonCores-CI/.github/workflows/iso-builder.yml@main
     with:
       product_name: ${{ needs.meta.outputs.product_name }}
