@@ -19,7 +19,7 @@ new = """    extra = options.get("extra", [])
             for _n in _os.listdir(_md):
                 _m = _re.sub(r'^[0-9]{2}-?', '', _n).lower()
                 _have.add(_m)
-        _deny = {"ostree", "bootc"}
+        _deny = {"ostree", "bootc", "biosdevname"}
         add_modules = [m for m in add_modules if m.lower() in _have and m.lower() not in _deny]
         modules = [m for m in modules if m.lower() in _have and m.lower() not in _deny]
     extra = list(extra) + ["--omit", "ostree bootc"]"""
