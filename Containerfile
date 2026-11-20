@@ -68,12 +68,12 @@ ARG BOOT_PROFILE=generic
 # u-boot-tools (arm64 embedded). The image completes the stack itself (the RUN
 # after the package list): every arm64 image ends up with GRUB + bootupd +
 # u-boot-tools, whatever the profile.
-ARG BOOT_PKG=grub-efi-amd64-signed grub-pc-bin
+ARG BOOT_PKG=grub-efi-amd64-signed
 # Firmware packages: x86_64 includes microcode + full firmware; arm64 drops microcode.
 ARG FIRMWARE_PKGS="intel-microcode amd64-microcode firmware-linux-free firmware-linux firmware-misc-nonfree"
 # Package(s) to hold from auto-upgrade: the GRUB package of the profile; empty for
 # the arm64 embedded profile (no GRUB).
-ARG APT_HOLD_PKG=grub-efi-amd64-signed grub-pc-bin
+ARG APT_HOLD_PKG=grub-efi-amd64-signed
 # Fingerprint of the custom APT repository content for this architecture, kernels and
 # device modules excluded (see KERNEL_DEBS_HASH), set by the CI.
 # Declared before the first layer installing from it: a changed value re-runs those
@@ -124,6 +124,7 @@ RUN apt update \
         isc-dhcp-client \
         wpasupplicant \
         ${BOOT_PKG} \
+        $([ "${ARCH}" = "amd64" ] && echo grub-pc-bin) \
         firmware-ath9k-htc \
         firmware-carl9170 \
         firmware-mediatek \
