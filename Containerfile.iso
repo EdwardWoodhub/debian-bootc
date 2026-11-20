@@ -61,6 +61,7 @@ COPY ./src/buildisopreinstall/sbin /sbin
 RUN apt update \
     && apt install -y --no-install-recommends \
         fisherman \
+        git \
         bootc-installer \
         cage \
         libgl1-mesa-dri \

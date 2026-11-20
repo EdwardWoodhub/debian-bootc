@@ -64,16 +64,16 @@ ARG ARCH=amd64
 # and the board's U-Boot firmware serves /boot).
 ARG BOOT_PROFILE=generic
 # Boot stack chosen by the CI from the architecture and the boot profile:
-# grub-efi-amd64-signed (amd64), grub-efi-arm64-signed (arm64 generic) or
+# grub-efi-amd64-signed grub-pc-bin (amd64), grub-efi-arm64-signed (arm64 generic) or
 # u-boot-tools (arm64 embedded). The image completes the stack itself (the RUN
 # after the package list): every arm64 image ends up with GRUB + bootupd +
 # u-boot-tools, whatever the profile.
-ARG BOOT_PKG=grub-efi-amd64-signed
+ARG BOOT_PKG=grub-efi-amd64-signed grub-pc-bin
 # Firmware packages: x86_64 includes microcode + full firmware; arm64 drops microcode.
 ARG FIRMWARE_PKGS="intel-microcode amd64-microcode firmware-linux-free firmware-linux firmware-misc-nonfree"
 # Package(s) to hold from auto-upgrade: the GRUB package of the profile; empty for
 # the arm64 embedded profile (no GRUB).
-ARG APT_HOLD_PKG=grub-efi-amd64-signed
+ARG APT_HOLD_PKG=grub-efi-amd64-signed grub-pc-bin
 # Fingerprint of the custom APT repository content for this architecture, kernels and
 # device modules excluded (see KERNEL_DEBS_HASH), set by the CI.
 # Declared before the first layer installing from it: a changed value re-runs those
