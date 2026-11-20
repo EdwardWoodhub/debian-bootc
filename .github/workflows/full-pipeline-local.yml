@@ -448,7 +448,9 @@ jobs:
           KEY_URL: ${{ steps.url.outputs.url }}/gpg.key
         run: |
           set -euo pipefail
-          sha=$(.ci-tooling/scripts/apt-key-hash.sh)
+          curl -fsSL "${KEY_URL}" -o /tmp/apt.key
+          gpg --batch --with-colons --show-keys /tmp/apt.key | grep -q '^pub:'
+          sha=$(sha256sum /tmp/apt.key | awk '{print $1}')
           echo "sha256=${sha}" >>"$GITHUB_OUTPUT"
           echo "Pinned APT key checksum: ${sha}"
 
