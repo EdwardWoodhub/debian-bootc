@@ -152,7 +152,7 @@ RUN apt update \
     && apt download bootupd \
     && dpkg --unpack bootupd_*.deb \
     && rm -f bootupd_*.deb \
-    && sed -i 's/set-default-bootloader grub$/set-default-bootloader grub2/' /var/lib/dpkg/info/bootupd.postinst \
+    && sed -i 's|bootupctl backend set-default-bootloader grub|python3 -c "import json,pathlib; p=pathlib.Path(\"/usr/lib/bootupd/updates/metadata.json\"); d=json.loads(p.read_text()); v=d.get(\"versions\",{}); v.setdefault(\"grub\", v[\"grub2\"]) if \"grub2\" in v else None; p.write_text(json.dumps(d))"\n    bootupctl backend set-default-bootloader grub|' /var/lib/dpkg/info/bootupd.postinst \
     && dpkg --configure bootupd \
     && if [ "${ARCH}" = arm64 ]; then \
         # The apt lists are wiped after every dpkg run (the 99-apt-clean
