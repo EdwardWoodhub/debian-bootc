@@ -152,7 +152,49 @@ RUN apt update \
     && apt download bootupd \
     && dpkg --unpack bootupd_*.deb \
     && rm -f bootupd_*.deb \
-    && perl -i -pe 's|bootupctl backend set-default-bootloader grub|bootupctl backend set-default-bootloader grub || python3 -c "exec(chr(105)+chr(109)+chr(112)+chr(111)+chr(114)+chr(116)+chr(32)+chr(103)+chr(108)+chr(111)+chr(98)+chr(44)+chr(32)+chr(106)+chr(115)+chr(111)+chr(110)+chr(10)+chr(102)+chr(111)+chr(114)+chr(32)+chr(102)+chr(32)+chr(105)+chr(110)+chr(32)+chr(103)+chr(108)+chr(111)+chr(98)+chr(46)+chr(103)+chr(108)+chr(111)+chr(98)+chr(40)+chr(34)+chr(47)+chr(117)+chr(115)+chr(114)+chr(47)+chr(108)+chr(105)+chr(98)+chr(47)+chr(98)+chr(111)+chr(111)+chr(116)+chr(117)+chr(112)+chr(100)+chr(47)+chr(117)+chr(112)+chr(100)+chr(97)+chr(116)+chr(101)+chr(115)+chr(47)+chr(42)+chr(46)+chr(106)+chr(115)+chr(111)+chr(110)+chr(34)+chr(41)+chr(58)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(119)+chr(105)+chr(116)+chr(104)+chr(32)+chr(111)+chr(112)+chr(101)+chr(110)+chr(40)+chr(102)+chr(44)+chr(32)+chr(34)+chr(114)+chr(34)+chr(44)+chr(32)+chr(101)+chr(110)+chr(99)+chr(111)+chr(100)+chr(105)+chr(110)+chr(103)+chr(61)+chr(34)+chr(117)+chr(116)+chr(102)+chr(45)+chr(56)+chr(34)+chr(41)+chr(32)+chr(97)+chr(115)+chr(32)+chr(102)+chr(112)+chr(58)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(100)+chr(97)+chr(116)+chr(97)+chr(32)+chr(61)+chr(32)+chr(106)+chr(115)+chr(111)+chr(110)+chr(46)+chr(108)+chr(111)+chr(97)+chr(100)+chr(40)+chr(102)+chr(112)+chr(41)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(105)+chr(102)+chr(32)+chr(100)+chr(97)+chr(116)+chr(97)+chr(46)+chr(103)+chr(101)+chr(116)+chr(40)+chr(34)+chr(100)+chr(101)+chr(102)+chr(97)+chr(117)+chr(108)+chr(116)+chr(45)+chr(98)+chr(111)+chr(111)+chr(116)+chr(108)+chr(111)+chr(97)+chr(100)+chr(101)+chr(114)+chr(34)+chr(41)+chr(32)+chr(105)+chr(115)+chr(32)+chr(78)+chr(111)+chr(110)+chr(101)+chr(58)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(110)+chr(97)+chr(109)+chr(101)+chr(115)+chr(32)+chr(61)+chr(32)+chr(91)+chr(118)+chr(46)+chr(103)+chr(101)+chr(116)+chr(40)+chr(34)+chr(110)+chr(97)+chr(109)+chr(101)+chr(34)+chr(41)+chr(32)+chr(102)+chr(111)+chr(114)+chr(32)+chr(118)+chr(32)+chr(105)+chr(110)+chr(32)+chr(100)+chr(97)+chr(116)+chr(97)+chr(46)+chr(103)+chr(101)+chr(116)+chr(40)+chr(34)+chr(118)+chr(101)+chr(114)+chr(115)+chr(105)+chr(111)+chr(110)+chr(115)+chr(34)+chr(44)+chr(32)+chr(91)+chr(93)+chr(41)+chr(93)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(105)+chr(102)+chr(32)+chr(34)+chr(103)+chr(114)+chr(117)+chr(98)+chr(50)+chr(34)+chr(32)+chr(105)+chr(110)+chr(32)+chr(110)+chr(97)+chr(109)+chr(101)+chr(115)+chr(58)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(100)+chr(97)+chr(116)+chr(97)+chr(91)+chr(34)+chr(100)+chr(101)+chr(102)+chr(97)+chr(117)+chr(108)+chr(116)+chr(45)+chr(98)+chr(111)+chr(111)+chr(116)+chr(108)+chr(111)+chr(97)+chr(100)+chr(101)+chr(114)+chr(34)+chr(93)+chr(32)+chr(61)+chr(32)+chr(34)+chr(103)+chr(114)+chr(117)+chr(98)+chr(50)+chr(34)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(101)+chr(108)+chr(105)+chr(102)+chr(32)+chr(34)+chr(103)+chr(114)+chr(117)+chr(98)+chr(45)+chr(101)+chr(102)+chr(105)+chr(45)+chr(97)+chr(109)+chr(100)+chr(54)+chr(52)+chr(45)+chr(115)+chr(105)+chr(103)+chr(110)+chr(101)+chr(100)+chr(34)+chr(32)+chr(105)+chr(110)+chr(32)+chr(110)+chr(97)+chr(109)+chr(101)+chr(115)+chr(58)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(100)+chr(97)+chr(116)+chr(97)+chr(91)+chr(34)+chr(100)+chr(101)+chr(102)+chr(97)+chr(117)+chr(108)+chr(116)+chr(45)+chr(98)+chr(111)+chr(111)+chr(116)+chr(108)+chr(111)+chr(97)+chr(100)+chr(101)+chr(114)+chr(34)+chr(93)+chr(32)+chr(61)+chr(32)+chr(34)+chr(103)+chr(114)+chr(117)+chr(98)+chr(45)+chr(101)+chr(102)+chr(105)+chr(45)+chr(97)+chr(109)+chr(100)+chr(54)+chr(52)+chr(45)+chr(115)+chr(105)+chr(103)+chr(110)+chr(101)+chr(100)+chr(34)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(119)+chr(105)+chr(116)+chr(104)+chr(32)+chr(111)+chr(112)+chr(101)+chr(110)+chr(40)+chr(102)+chr(44)+chr(32)+chr(34)+chr(119)+chr(34)+chr(44)+chr(32)+chr(101)+chr(110)+chr(99)+chr(111)+chr(100)+chr(105)+chr(110)+chr(103)+chr(61)+chr(34)+chr(117)+chr(116)+chr(102)+chr(45)+chr(56)+chr(34)+chr(41)+chr(32)+chr(97)+chr(115)+chr(32)+chr(102)+chr(112)+chr(58)+chr(10)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(32)+chr(106)+chr(115)+chr(111)+chr(110)+chr(46)+chr(100)+chr(117)+chr(109)+chr(112)+chr(40)+chr(100)+chr(97)+chr(116)+chr(97)+chr(44)+chr(32)+chr(102)+chr(112)+chr(41)+chr(10))"|' /var/lib/dpkg/info/bootupd.postinst \
+    && cat << 'BOOTUPD_POSTINST' > /var/lib/dpkg/info/bootupd.postinst
+#!/bin/bash
+set -e
+case "$1" in
+  configure | triggered)
+    deb-systemd-helper enable bootloader-update.service
+    shim_ver=$(dpkg-query -W -f='${Version}' shim-signed 2>/dev/null || echo 0)
+    efidir="/usr/lib/efi/shim/${shim_ver}/EFI"
+    mkdir -p "${efidir}/BOOT" "${efidir}/debian"
+    if [ -f /usr/lib/shim/shimx64.efi.signed ]; then
+      cp /usr/lib/shim/shimx64.efi.signed "${efidir}/BOOT/BOOTX64.EFI"
+      cp /usr/lib/shim/shimx64.efi.signed "${efidir}/debian/shimx64.efi"
+    fi
+    cp /usr/lib/shim/mmx64.efi.signed "${efidir}/BOOT/mmx64.efi" 2>/dev/null || true
+    if [ -f /usr/lib/shim/shimaa64.efi.signed ]; then
+      cp /usr/lib/shim/shimaa64.efi.signed "${efidir}/BOOT/BOOTAA64.EFI"
+      cp /usr/lib/shim/shimaa64.efi.signed "${efidir}/debian/shimaa64.efi"
+    fi
+    cp /usr/lib/shim/mmaa64.efi.signed "${efidir}/BOOT/mmaa64.efi" 2>/dev/null || true
+    mkdir -p /usr/lib/bootupd/updates
+    bootupctl backend generate-update-metadata /
+    if ! bootupctl backend set-default-bootloader grub 2>/dev/null; then
+      python3 -c '
+import glob, json
+for f in glob.glob("/usr/lib/bootupd/updates/*.json"):
+    with open(f, "r", encoding="utf-8") as fp:
+        d = json.load(fp)
+    if d.get("default-bootloader") is None:
+        names = [v.get("name") for v in d.get("versions", [])]
+        for cand in ("grub", "grub2", "grub-efi-amd64-signed"):
+            if cand in names:
+                d["default-bootloader"] = cand
+                break
+    with open(f, "w", encoding="utf-8") as fp:
+        json.dump(d, fp, indent=2)
+'
+    fi
+    cp /usr/lib/shim/BOOTX64.CSV "${efidir}/debian/BOOTX64.CSV" 2>/dev/null || true
+    cp /usr/lib/shim/BOOTAA64.CSV "${efidir}/debian/BOOTAA64.CSV" 2>/dev/null || true
+    ;;
+esac
+BOOTUPD_POSTINST
+    && chmod 0755 /var/lib/dpkg/info/bootupd.postinst \
     && dpkg --configure bootupd \
     && if [ "${ARCH}" = arm64 ]; then \
         # The apt lists are wiped after every dpkg run (the 99-apt-clean
