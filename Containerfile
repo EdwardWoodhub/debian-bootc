@@ -133,8 +133,7 @@ RUN apt update \
         apt install -y --no-install-recommends \
             firmware-intel-graphics \
             firmware-intel-misc \
-            firmware-nvidia-graphics \
-            grub-pc-bin; \
+            firmware-nvidia-graphics; \
     else \
         apt install -y --no-install-recommends \
             efibootmgr \
@@ -148,6 +147,13 @@ RUN apt update \
     # image, U-Boot boards → fisherman passes --bootloader none and the
     # board's U-Boot firmware serves /boot.
     && apt update \
+    && if [ "${ARCH}" = "amd64" ]; then \
+        apt download grub-pc-bin \
+        && dpkg-deb -x grub-pc-bin_*.deb /tmp/grub-pc \
+        && mkdir -p /usr/lib/grub \
+        && cp -a /tmp/grub-pc/usr/lib/grub/i386-pc /usr/lib/grub/ \
+        && rm -rf /tmp/grub-pc grub-pc-bin_*.deb; \
+    fi \
     && apt install -y --no-install-recommends bootupd \
     && if [ "${ARCH}" = arm64 ]; then \
         # The apt lists are wiped after every dpkg run (the 99-apt-clean
