@@ -148,11 +148,12 @@ RUN apt update \
     # board's U-Boot firmware serves /boot.
     && apt update \
     && if [ "${ARCH}" = "amd64" ]; then apt install -y --no-install-recommends shim-signed; fi \
+    && apt update \
     && apt download bootupd \
     && dpkg --unpack bootupd_*.deb \
     && rm -f bootupd_*.deb \
     && sed -i 's/set-default-bootloader grub$/set-default-bootloader grub2/' /var/lib/dpkg/info/bootupd.postinst \
-    && apt install -fy --no-install-recommends \
+    && dpkg --configure bootupd \
     && if [ "${ARCH}" = arm64 ]; then \
         # The apt lists are wiped after every dpkg run (the 99-apt-clean
         # policy of the preinstall dir), so this run refreshes them itself:
