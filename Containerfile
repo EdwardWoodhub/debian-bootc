@@ -147,6 +147,7 @@ RUN apt update \
     # image, U-Boot boards → fisherman passes --bootloader none and the
     # board's U-Boot firmware serves /boot.
     && apt update \
+    && if [ "${ARCH}" = "amd64" ]; then apt install -y --no-install-recommends shim-signed; fi \
     && apt download bootupd \
     && dpkg --unpack bootupd_*.deb \
     && rm -f bootupd_*.deb \
