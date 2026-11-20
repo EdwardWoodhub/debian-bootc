@@ -151,8 +151,11 @@ RUN apt update \
     && apt update \
     && apt download bootupd \
     && dpkg --unpack bootupd_*.deb \
-    && rm -f bootupd_*.deb \
-    && cat << 'BOOTUPD_POSTINST' > /var/lib/dpkg/info/bootupd.postinst
+    && rm -f bootupd_*.deb
+
+RUN <<'BOOTUPD_SCRIPT'
+set -e
+cat << 'POSTINST_END' > /var/lib/dpkg/info/bootupd.postinst
 #!/bin/bash
 set -e
 case "$1" in
@@ -193,10 +196,12 @@ for f in glob.glob("/usr/lib/bootupd/updates/*.json"):
     cp /usr/lib/shim/BOOTAA64.CSV "${efidir}/debian/BOOTAA64.CSV" 2>/dev/null || true
     ;;
 esac
-BOOTUPD_POSTINST
-    && chmod 0755 /var/lib/dpkg/info/bootupd.postinst \
-    && dpkg --configure bootupd \
-    && if [ "${ARCH}" = arm64 ]; then \
+POSTINST_END
+chmod 0755 /var/lib/dpkg/info/bootupd.postinst
+dpkg --configure bootupd
+BOOTUPD_SCRIPT
+
+RUN if [ "${ARCH}" = arm64 ]; then \
         # The apt lists are wiped after every dpkg run (the 99-apt-clean
         # policy of the preinstall dir), so this run refreshes them itself:
         # without it the lists gone with the bootupd install left u-boot-tools
