@@ -47,6 +47,7 @@ categories:
     arch: amd64
     suffix: ""
     secure_boot: 1
+    kargs: ["module.sig_enforce=0"]
   - name: signed
     arch: arm64
     suffix: ""
@@ -62,6 +63,7 @@ categories:
     arch: arm64
     suffix: ""
     secure_boot: 1
+    kargs: ["module.sig_enforce=0"]
 
 tests:
   # ── bootc / ostree / immutability ──────────────────────────────────────
