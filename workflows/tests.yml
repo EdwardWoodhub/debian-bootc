@@ -43,18 +43,17 @@ categories:
     secure_boot: 1
     reference: true
     kargs: ["module.sig_enforce=1"]
-    - name: signed
+  - name: signed
     arch: arm64
     suffix: ""
     secure_boot: 1
     reference: true
     kargs: ["module.sig_enforce=1"]
-  # U-Boot devices have no secure boot (see packages.yml, kernel -4k).
   - name: uboot
     arch: arm64
     suffix: "-4k"
     secure_boot: 0
-  
+
 tests:
   # ── bootc / ostree / immutability ──────────────────────────────────────
   - name: booted through bootc
