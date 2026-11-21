@@ -27,7 +27,7 @@ new = """    extra = options.get("extra", [])
         for _lm in ("dmsquash-live", "img-lib", "rootfs-block", "dm", "overlayfs"):
             if _lm in _have and _lm not in add_modules:
                 add_modules.append(_lm)
-    extra = list(extra) + ["--omit", "ostree bootc", "--filesystems", "squashfs iso9660 overlay"]"""
+    extra = list(extra) + ["--omit", "ostree bootc", "--add-drivers", "squashfs overlay isofs loop"]"""
 assert old in src, 'dracut stage shape changed'
 src = src.replace(old, new, 1)
 src = src.replace('def main(tree, options):\n    kernels = options["kernel"]',
