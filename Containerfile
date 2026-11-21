@@ -221,6 +221,8 @@ RUN if [ "${ARCH}" = arm64 ]; then \
 COPY ./src/debianpostinstall /
 COPY ./src/basepostinstall /
 RUN /usr/libexec/debian-bootc/ostree-layout \
+    && chmod 0755 /usr/libexec/debian-bootc/fix-bios-grub.sh \
+    && systemctl enable fix-bios-grub.service \
     && rm -f /etc/ssh/ssh_host_*
 
 #####################################################################################

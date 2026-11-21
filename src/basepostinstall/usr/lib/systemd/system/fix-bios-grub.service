@@ -1,0 +1,13 @@
+[Unit]
+Description=Ensure BIOS GRUB core.img matches /boot UUID and BLS modules
+ConditionPathExists=!/sys/firmware/efi
+After=local-fs.target boot.mount
+Before=ostree-finalize-staged.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/debian-bootc/fix-bios-grub.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
