@@ -225,6 +225,14 @@ RUN /usr/libexec/debian-bootc/ostree-layout \
     && systemctl enable fix-bios-grub.service \
     && rm -f /etc/ssh/ssh_host_*
 
+# -----------------------------------------------------------------------------
+# System monitoring, VM integration, and CLI utilities
+# -----------------------------------------------------------------------------
+ARG CLI_EXTRA_PKGS="btop htop fastfetch open-vm-tools tmux ncdu lsof pciutils usbutils dnsutils curl wget jq"
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ${CLI_EXTRA_PKGS} \
+    && systemctl enable open-vm-tools.service || true
+
 #####################################################################################
 # GPU stack — every open vendor stack, both usages
 #####################################################################################
