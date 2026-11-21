@@ -573,16 +573,24 @@ jobs:
           skip_pages: 'true'
 
       - name: Generate APT repository index.html
+        id: gen-index
         shell: bash
         env:
           REPO_NAME: ${{ steps.repo.outputs.name }}
         run: |
           set -euo pipefail
+          repo_dir=$(find "${RUNNER_WORKSPACE}" /tmp -maxdepth 4 -type d -path "*/${REPO_NAME}/dists" 2>/dev/null | head -n 1 | xargs -r dirname)
+          if [ -z "${repo_dir}" ] || [ ! -d "${repo_dir}" ]; then
+            echo "::error::Could not locate generated APT repository directory for ${REPO_NAME}"
+            exit 1
+          fi
+          echo "Found APT repo dir: ${repo_dir}"
+          echo "repo_dir=${repo_dir}" >> "$GITHUB_OUTPUT"
           owner="${GITHUB_REPOSITORY%%/*}"
           pages_url="https://${owner,,}.github.io/${REPO_NAME}"
           sed -e "s|__REPO_NAME__|${REPO_NAME}|g" \
               -e "s|__PAGES_URL__|${pages_url}|g" \
-              .ci-tooling/apt-index.html > "${REPO_NAME}/index.html"
+              .ci-tooling/apt-index.html > "${repo_dir}/index.html"
 
       - name: Drop stale github-pages artifact
         shell: bash
@@ -601,7 +609,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: ${{ steps.repo.outputs.name }}
+          path: ${{ steps.gen-index.outputs.repo_dir }}
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v5
