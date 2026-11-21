@@ -9,9 +9,9 @@ on:
 
 jobs:
   sync-to-acr:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 90
     permissions:
       packages: read
       contents: read
@@ -26,7 +26,25 @@ jobs:
           echo "$GHCR_TOKEN" | skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin
           echo "$ACR_PASSWORD" | skopeo login "$ACR_REGISTRY" -u "$ACR_USERNAME" --password-stdin
 
+      - name: Check if GHCR image has a newer digest than Aliyun ACR
+        id: check
+        env:
+          ACR_REGISTRY: ${{ secrets.ALIYUN_ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
+        run: |
+          SRC_DIGEST=$(skopeo inspect --raw "docker://ghcr.io/edwardwoodhub/my-debian-bootc:latest" | sha256sum | awk '{print "sha256:"$1}')
+          DEST_DIGEST=$(skopeo inspect --raw "docker://${ACR_REGISTRY}/${ACR_NAMESPACE}/my-debian-bootc:latest" 2>/dev/null | sha256sum | awk '{print "sha256:"$1}' || echo "none")
+          echo "GHCR Digest: $SRC_DIGEST"
+          echo "ACR  Digest: $DEST_DIGEST"
+          if [ "$SRC_DIGEST" = "$DEST_DIGEST" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "should_sync=false" >> "$GITHUB_OUTPUT"
+            echo "Digests match; skipping redundant ACR sync."
+          else
+            echo "should_sync=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Pull multi-arch image from GHCR to local OCI layout
+        if: steps.check.outputs.should_sync == 'true'
         run: |
           mkdir -p /tmp/oci-image
           skopeo copy --all --retry-times 3 \
@@ -34,6 +52,7 @@ jobs:
             "oci:/tmp/oci-image:latest"
 
       - name: Push local OCI layout to Aliyun ACR
+        if: steps.check.outputs.should_sync == 'true'
         env:
           ACR_REGISTRY: ${{ secrets.ALIYUN_ACR_REGISTRY }}
           ACR_NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
@@ -45,3 +64,9 @@ jobs:
           echo "### Aliyun ACR Sync Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Source**: \`ghcr.io/edwardwoodhub/my-debian-bootc:latest\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Target**: \`${ACR_REGISTRY}/${ACR_NAMESPACE}/my-debian-bootc:latest\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report skipped sync when up-to-date
+        if: steps.check.outputs.should_sync != 'true'
+        run: |
+          echo "### Aliyun ACR Sync Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Status**: Skipped (Aliyun ACR \`latest\` digest already matches GHCR)." >> "$GITHUB_STEP_SUMMARY"
