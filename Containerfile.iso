@@ -147,6 +147,7 @@ RUN mkdir -p /usr/lib/debian-bootc/upstream \
          '    rootok=1' \
          '    [ -z "$(getarg rd.live.dir=)" ] && echo "rd.live.dir=images" >> /etc/cmdline.d/91-debian-live.conf' \
          '    [ -z "$(getarg rd.live.squashimg=)" ] && echo "rd.live.squashimg=install.img" >> /etc/cmdline.d/91-debian-live.conf' \
+         '    for _mod in loop isofs squashfs overlay; do modprobe "$_mod" 2>/dev/null || true; done' \
          'fi' \
          > /usr/lib/dracut/modules.d/90dmsquash-live/01-inst-stage2.sh \
     && chmod 0755 /usr/lib/dracut/modules.d/90dmsquash-live/01-inst-stage2.sh \
