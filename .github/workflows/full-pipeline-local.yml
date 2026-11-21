@@ -579,7 +579,7 @@ jobs:
           REPO_NAME: ${{ steps.repo.outputs.name }}
         run: |
           set -euo pipefail
-          repo_dir=$(find "${RUNNER_WORKSPACE}" /tmp -maxdepth 4 -type d -path "*/${REPO_NAME}/dists" 2>/dev/null | head -n 1 | xargs -r dirname)
+          repo_dir=$(find "${RUNNER_WORKSPACE}" /tmp /home/runner -type d -path "*/dists/trixie" 2>/dev/null | head -n 1 | sed "s|/dists/trixie$||")
           if [ -z "${repo_dir}" ] || [ ! -d "${repo_dir}" ]; then
             echo "::error::Could not locate generated APT repository directory for ${REPO_NAME}"
             exit 1
