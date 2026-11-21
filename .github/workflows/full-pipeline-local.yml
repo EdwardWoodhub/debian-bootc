@@ -577,17 +577,27 @@ jobs:
         shell: bash
         env:
           REPO_NAME: ${{ steps.repo.outputs.name }}
+          APT_GPG_KEY: ${{ secrets.APT_GPG_KEY }}
         run: |
           set -euo pipefail
           repo_dir=$(find "${RUNNER_TEMP:-/home/runner/work/_temp}" "${RUNNER_WORKSPACE:-/home/runner/work}" /tmp /var/tmp -type d -path "*/dists/trixie" 2>/dev/null | head -n 1 | sed "s|/dists/trixie$||" || true)
           if [ -z "${repo_dir}" ] || [ ! -d "${repo_dir}" ]; then
-            echo "Debug: listing RUNNER_TEMP and tmp:"
-            ls -la "${RUNNER_TEMP:-/tmp}" /tmp || true
             echo "::error::Could not locate generated APT repository directory for ${REPO_NAME}"
             exit 1
           fi
           echo "Found APT repo dir: ${repo_dir}"
           echo "repo_dir=${repo_dir}" >> "$GITHUB_OUTPUT"
+
+          # Export ASCII-armored public key to gpg.key if missing
+          if [ ! -s "${repo_dir}/gpg.key" ] && [ -n "${APT_GPG_KEY}" ]; then
+            tmp_gpg=$(mktemp -d)
+            chmod 700 "${tmp_gpg}"
+            printf '%s
+' "${APT_GPG_KEY}" | gpg --batch --homedir "${tmp_gpg}" --import
+            gpg --batch --homedir "${tmp_gpg}" --armor --export > "${repo_dir}/gpg.key"
+            rm -rf "${tmp_gpg}"
+          fi
+
           owner="${GITHUB_REPOSITORY%%/*}"
           pages_url="https://${owner,,}.github.io/${REPO_NAME}"
           sed -e "s|__REPO_NAME__|${REPO_NAME}|g" \
