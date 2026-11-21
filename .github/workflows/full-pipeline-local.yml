@@ -579,8 +579,10 @@ jobs:
           REPO_NAME: ${{ steps.repo.outputs.name }}
         run: |
           set -euo pipefail
-          repo_dir=$(find "${RUNNER_WORKSPACE}" /tmp /home/runner -type d -path "*/dists/trixie" 2>/dev/null | head -n 1 | sed "s|/dists/trixie$||")
+          repo_dir=$(find "${RUNNER_TEMP:-/home/runner/work/_temp}" "${RUNNER_WORKSPACE:-/home/runner/work}" /tmp /var/tmp -type d -path "*/dists/trixie" 2>/dev/null | head -n 1 | sed "s|/dists/trixie$||" || true)
           if [ -z "${repo_dir}" ] || [ ! -d "${repo_dir}" ]; then
+            echo "Debug: listing RUNNER_TEMP and tmp:"
+            ls -la "${RUNNER_TEMP:-/tmp}" /tmp || true
             echo "::error::Could not locate generated APT repository directory for ${REPO_NAME}"
             exit 1
           fi
