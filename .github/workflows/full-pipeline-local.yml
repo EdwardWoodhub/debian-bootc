@@ -570,6 +570,41 @@ jobs:
         with:
           repo_name: ${{ steps.repo.outputs.name }}
           apt_gpg_key: ${{ secrets.APT_GPG_KEY }}
+          skip_pages: 'true'
+
+      - name: Generate APT repository index.html
+        shell: bash
+        env:
+          REPO_NAME: ${{ steps.repo.outputs.name }}
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY%%/*}"
+          pages_url="https://${owner,,}.github.io/${REPO_NAME}"
+          sed -e "s|__REPO_NAME__|${REPO_NAME}|g" \
+              -e "s|__PAGES_URL__|${pages_url}|g" \
+              .ci-tooling/apt-index.html > "${REPO_NAME}/index.html"
+
+      - name: Drop stale github-pages artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts"
+          for id in $(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${api}" | jq -r '.artifacts[]? | select(.name == "github-pages") | .id'); do
+            curl -fsSL -X DELETE -H "Authorization: Bearer ${GH_TOKEN}" "${api}/${id}"
+          done || true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ steps.repo.outputs.name }}
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v5
 
   # Aggregate any_rebuilt from both arches: a rebuild on either arch forces a
   # no-cache image rebuild. workflow_call outputs from reusable workflows are
