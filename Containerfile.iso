@@ -136,7 +136,21 @@ RUN mkdir -p /usr/lib/debian-bootc/upstream \
     && for d in 90dmsquash-live 90livenet; do \
          test -d "/usr/lib/dracut/modules.d/${d}" \
            || { echo "ERROR: live dracut module ${d} missing" >&2; exit 1; }; \
-       done
+       done \
+    && printf '%s\n' \
+         '#!/bin/sh' \
+         '# Translate Anaconda inst.stage2=hd:LABEL=<lbl> into dmsquash-live args' \
+         '_s2=$(getarg inst.stage2=)' \
+         'if [ -n "$_s2" ] && [ -z "$root" ]; then' \
+         '    _lbl="${_s2#hd:LABEL=}"' \
+         '    root="live:CDLABEL=${_lbl}"' \
+         '    rootok=1' \
+         '    [ -z "$(getarg rd.live.dir=)" ] && echo "rd.live.dir=images" >> /etc/cmdline.d/91-debian-live.conf' \
+         '    [ -z "$(getarg rd.live.squashimg=)" ] && echo "rd.live.squashimg=install.img" >> /etc/cmdline.d/91-debian-live.conf' \
+         'fi' \
+         > /usr/lib/dracut/modules.d/90dmsquash-live/01-inst-stage2.sh \
+    && chmod 0755 /usr/lib/dracut/modules.d/90dmsquash-live/01-inst-stage2.sh \
+    && sed -i '/^install()/a\    inst_hook cmdline 25 "$moddir/01-inst-stage2.sh"' /usr/lib/dracut/modules.d/90dmsquash-live/module-setup.sh
 
 # -----------------------------------------------------------------------------
 # Phase 1.5: osbuild stage prerequisites on the deployed tree
