@@ -592,8 +592,7 @@ jobs:
           if [ ! -s "${repo_dir}/gpg.key" ] && [ -n "${APT_GPG_KEY}" ]; then
             tmp_gpg=$(mktemp -d)
             chmod 700 "${tmp_gpg}"
-            printf '%s
-' "${APT_GPG_KEY}" | gpg --batch --homedir "${tmp_gpg}" --import
+            printf '%s\n' "${APT_GPG_KEY}" | gpg --batch --homedir "${tmp_gpg}" --import
             gpg --batch --homedir "${tmp_gpg}" --armor --export > "${repo_dir}/gpg.key"
             rm -rf "${tmp_gpg}"
           fi
